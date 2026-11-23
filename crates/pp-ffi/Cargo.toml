@@ -1,0 +1,23 @@
+[package]
+name = "pp-ffi"
+description = "Kotlin bridge (UniFFI) for Papeles"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "pp_ffi"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+pp-core = { path = "../pp-core" }
+uniffi = "=0.32.2"
+thiserror = "=2.0.21"

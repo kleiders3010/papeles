@@ -79,3 +79,18 @@ fn bad_input_is_an_error() {
     assert_eq!(v.page_size(1).unwrap().0.round(), 842.0); // pinned: wide page made 842 wide
     assert!(matches!(v.render(2, 100), Err(Error::NoSuchPage(_, 2))));
 }
+
+#[test]
+fn a_turned_and_moved_page_keeps_its_text() {
+    // 2026-11-23: the app's page editor (delete 2, move 3 up, turn it) saved a first page with no text
+    let e = engine();
+    let src = pp_core::open(&pdf(&[&["page one"], &["page two"], &["page three"]], false), None).unwrap();
+    let mut out = pp_core::pages::assemble(&[src], &[pp_core::pages::Pick::turned(0, 3, 90), pp_core::pages::Pick::new(0, 1)]).unwrap();
+    let v = e.open(pp_core::save(&mut out).unwrap(), None).unwrap();
+    assert_eq!(v.page_count(), 2); // pinned: two picked
+    let (t1, t2) = (v.text(1).unwrap(), v.text(2).unwrap());
+    assert!(t1.contains("page three"), "page 1: {t1:?} / page 2: {t2:?}");
+    assert!(t2.contains("page one"), "page 2: {t2:?}");
+    let (w, h) = v.page_size(1).unwrap();
+    assert!(w > h, "turned page is wide: {w} x {h}");
+}

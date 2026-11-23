@@ -1,0 +1,45 @@
+package com.jurisgames.papeles.ui
+
+import java.io.File
+
+/** One file on the recent list: what it is called and how to find it again (a path or a content URI). */
+data class RecentFile(val name: String, val key: String, val openedMs: Long)
+
+/**
+ * The recent list, newest first, at most [MAX] entries, in `recent.tsv` in the app's data folder. Names and keys are
+ * stored with tabs and line breaks removed, so one bad name cannot break the file.
+ */
+object Recent {
+    const val MAX = 30
+
+    private fun file(dir: File) = File(dir, "recent.tsv")
+
+    private fun clean(s: String) = s.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
+
+    fun load(dir: File): List<RecentFile> = runCatching {
+        file(dir).readLines().mapNotNull { line ->
+            val p = line.split('\t')
+            if (p.size == 3) p[2].toLongOrNull()?.let { RecentFile(p[0], p[1], it) } else null
+        }
+    }.getOrDefault(emptyList()).take(MAX)
+
+    private fun write(dir: File, list: List<RecentFile>) {
+        runCatching {
+            dir.mkdirs()
+            val tmp = File(dir, "recent.tsv.tmp")
+            tmp.writeText(list.take(MAX).joinToString("") { "${clean(it.name)}\t${clean(it.key)}\t${it.openedMs}\n" })
+            if (!tmp.renameTo(file(dir))) { file(dir).delete(); tmp.renameTo(file(dir)) }
+        }
+    }
+
+    fun add(dir: File, name: String, key: String, now: Long = System.currentTimeMillis()): List<RecentFile> {
+        val list = listOf(RecentFile(clean(name), clean(key), now)) + load(dir).filter { it.key != clean(key) }
+        write(dir, list)
+        return load(dir)
+    }
+
+    fun remove(dir: File, key: String): List<RecentFile> {
+        write(dir, load(dir).filter { it.key != key })
+        return load(dir)
+    }
+}

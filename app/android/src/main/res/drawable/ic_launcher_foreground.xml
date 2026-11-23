@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Papeles: a sheet of paper with a folded corner and three lines of text, inside the adaptive icon's 66 dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M38,28h22l12,12v38a2,2 0 0,1 -2,2h-32a2,2 0 0,1 -2,-2v-48a2,2 0 0,1 2,-2z" />
+    <path android:fillColor="#B9C9F0" android:pathData="M60,28v10a2,2 0 0,0 2,2h10z" />
+    <path android:strokeColor="#2F5FC4" android:strokeWidth="3" android:strokeLineCap="round" android:pathData="M44,52h20M44,60h20M44,68h13" />
+</vector>

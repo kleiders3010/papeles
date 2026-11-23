@@ -1,0 +1,24 @@
+[workspace]
+resolver = "3"
+members = ["crates/pp-core", "crates/pp-ffi"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "Apache-2.0"
+
+# Same disk guard as the other apps (2026-11-22: target folders reached ~375 GB): line tables only, no incremental cache.
+[profile.dev]
+debug = "line-tables-only"
+incremental = false
+
+[profile.test]
+debug = "line-tables-only"
+incremental = false
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "unwind"
+strip = true

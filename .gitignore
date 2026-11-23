@@ -1,2 +1,8 @@
 target/
 vendor/
+app/build/
+app/*/build/
+app/.gradle/
+app/.kotlin/
+app/local.properties
+app/android/src/main/jniLibs/

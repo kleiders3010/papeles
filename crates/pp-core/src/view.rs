@@ -92,7 +92,11 @@ impl<'a> Viewer<'a> {
     /// All the text of a page, in reading order as PDFium finds it.
     pub fn text(&self, page: u32) -> Result<String> {
         let p = self.page(page)?;
-        Ok(p.text().map_err(|e| Error::Damaged(e.to_string()))?.all())
+        // not .all(): it reads inside the page's shown size, which a turned page swaps (a portrait page turned 90
+        // degrees read as empty, 2026-11-23); text sits in the unturned space, so read a box that covers both ways
+        let side = p.width().value.max(p.height().value) * 2.0 + 1000.0;
+        let all = PdfRect::new_from_values(-side, -side, side, side);
+        Ok(p.text().map_err(|e| Error::Damaged(e.to_string()))?.inside_rect(all))
     }
 
     /// Every place `words` appear (case-insensitive), page by page, up to `limit` hits.

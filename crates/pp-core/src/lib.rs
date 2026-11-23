@@ -5,6 +5,7 @@ pub mod make;
 pub mod pages;
 pub mod view;
 
+pub use lopdf;
 use lopdf::{Document, LoadOptions};
 
 /// More pages than any real document we expect; a file claiming more is refused before work starts.
