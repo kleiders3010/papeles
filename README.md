@@ -3,8 +3,15 @@
 A free, open-source PDF app for Android and Windows. Every feature is free: no account, no ads, no subscription, no
 watermark. Your files never leave your device: the app has no servers and doesn't upload anything.
 
-- **Read:** open any PDF, scroll its pages, search its text (every hit marked on the page), open locked PDFs with
-  their password. Files you open are kept on a recent list.
+- **Read:** open any PDF, scroll its pages, zoom, jump with the strip of small pages, search its text (every hit
+  marked on the page), open locked PDFs with their password. Files you open are kept on a recent list.
+- **Fill in forms:** text boxes, checkboxes, choices; a filled copy is saved (a digitally signed PDF says what filling
+  does to its signature first).
+- **Sign:** draw your signature once (it stays on the device) and tap it onto the pages. It is a picture of your
+  signature, as on paper, not a digital signature.
+- **Mark up:** type text, highlight, write with a pen. The marks are standard PDF notes other readers show too.
+- **Scan:** photograph each page (or choose photos); the paper's corners are found, the page is straightened and
+  cleaned (document, grey or colour), then saved as a PDF.
 - **Edit pages:** turn, move and delete pages, then save a new PDF (the original is never changed).
 - **Join PDFs:** put several PDFs together in the order you choose.
 - **Pictures to PDF:** one page per picture (JPEG or PNG), on A4, Letter or each picture's own size.
@@ -12,7 +19,6 @@ watermark. Your files never leave your device: the app has no servers and doesn'
   is only replaced when the new one is smaller.
 - English and Spanish.
 
-Coming next: fill in forms and sign, scan paper with the camera.
 
 ## How it works
 
