@@ -35,7 +35,7 @@ import java.nio.ByteBuffer
  * is kept (persistable permission) so the recent list can open it again.
  */
 class MainActivity : ComponentActivity(), Host {
-    override val dataDir: File get() = filesDir
+    override val appFiles: File get() = filesDir
 
     private var onPdfs: ((List<Picked>) -> Unit)? = null
     private var onPictures: ((List<Picked>) -> Unit)? = null
@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity(), Host {
         AppInfo.engine = runCatching { loadEngine(applicationInfo.nativeLibraryDir) }.fold({ "started" }, { "did not start" })
         if (savedInstanceState == null) take(intent)
         setContent {
-            var mode by androidx.compose.runtime.remember { mutableStateOf(darkMode(dataDir)) }
+            var mode by androidx.compose.runtime.remember { mutableStateOf(darkMode(appFiles)) }
             // The family's own blue, not wallpaper colors: the app looks the same on every phone and in the store pictures.
             AppTheme(mode) {
                 Box(Modifier.fillMaxSize().safeDrawingPadding()) {

@@ -43,7 +43,7 @@ fun skiaImage(p: Picture): ImageBitmap {
  * `-Dpp.home=DIR` moves it (tests).
  */
 class DesktopHost(private val owner: () -> Frame?) : Host {
-    override val dataDir: File = System.getProperty("pp.home")?.let { File(it) } ?: run {
+    override val appFiles: File = System.getProperty("pp.home")?.let { File(it) } ?: run {
         val appData = System.getenv("APPDATA") ?: (System.getProperty("user.home") + "/.local/share")
         File(appData, "Papeles")
     }.apply { mkdirs() }
@@ -98,7 +98,7 @@ fun main() {
     application {
         var frame: Frame? = null
         val host = remember { DesktopHost { frame } }
-        var mode by remember { mutableStateOf(darkMode(host.dataDir)) }
+        var mode by remember { mutableStateOf(darkMode(host.appFiles)) }
         Window(onCloseRequest = ::exitApplication, title = tr("Papeles"), state = rememberWindowState(width = 900.dp, height = 1000.dp)) {
             frame = window
             AppTheme(mode) { PapelesApp(host) { mode = it } }

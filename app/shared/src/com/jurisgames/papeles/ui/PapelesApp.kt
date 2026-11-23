@@ -100,7 +100,7 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
     val snack = remember { SnackbarHostState() }
     val worker = remember { Worker(scope, snack) }
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
-    var recent by remember { mutableStateOf(Recent.load(host.dataDir)) }
+    var recent by remember { mutableStateOf(Recent.load(host.appFiles)) }
     var locked by remember { mutableStateOf<Picked?>(null) }
     var wrongPassword by remember { mutableStateOf(false) }
 
@@ -115,7 +115,7 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
         }) { r ->
             r.onSuccess { doc ->
                 locked = null
-                recent = Recent.add(host.dataDir, p.name, p.key)
+                recent = Recent.add(host.appFiles, p.name, p.key)
                 close(screen)
                 screen = Screen.Reader(doc)
             }.onFailure { e ->
@@ -135,9 +135,9 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
                     open = { open(it) },
                     reopen = { r ->
                         val p = host.reopen(r.name, r.key)
-                        if (p == null) { recent = Recent.remove(host.dataDir, r.key); worker.say(tr("This file is no longer there.")) } else open(p)
+                        if (p == null) { recent = Recent.remove(host.appFiles, r.key); worker.say(tr("This file is no longer there.")) } else open(p)
                     },
-                    forget = { recent = Recent.remove(host.dataDir, it.key) },
+                    forget = { recent = Recent.remove(host.appFiles, it.key) },
                     go = { screen = it })
                 is Screen.Reader -> Reader(s.doc, host, worker, back = { close(s); screen = Screen.Home }, editPages = { screen = Screen.Pages(s.doc) })
                 is Screen.Pages -> PagesScreen(s.doc, host, worker, back = { screen = Screen.Reader(s.doc) })
@@ -230,7 +230,7 @@ private fun Action(icon: ImageVector, label: String, tag: String, onClick: () ->
 
 @Composable
 private fun SettingsDialog(host: Host, onTheme: (DarkMode) -> Unit, onClose: () -> Unit) {
-    var mode by remember { mutableStateOf(darkMode(host.dataDir)) }
+    var mode by remember { mutableStateOf(darkMode(host.appFiles)) }
     AlertDialog(
         onDismissRequest = onClose,
         confirmButton = { TextButton(onClick = onClose, modifier = Modifier.testTag("settingsClose")) { Text(tr("Close")) } },
@@ -239,7 +239,7 @@ private fun SettingsDialog(host: Host, onTheme: (DarkMode) -> Unit, onClose: () 
             Column {
                 Text(tr("Appearance"), style = MaterialTheme.typography.titleSmall)
                 for (m in DarkMode.entries) {
-                    Row(Modifier.fillMaxWidth().clickable { mode = m; setDarkMode(host.dataDir, m); onTheme(m) }.testTag("dark-" + m.key),
+                    Row(Modifier.fillMaxWidth().clickable { mode = m; setDarkMode(host.appFiles, m); onTheme(m) }.testTag("dark-" + m.key),
                         verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(mode == m, null)
                         Text(tr(m.label))

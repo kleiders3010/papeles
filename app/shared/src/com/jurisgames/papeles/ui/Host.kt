@@ -12,7 +12,7 @@ class Picked(val name: String, val key: String, val read: () -> ByteArray)
  */
 interface Host {
     /** Folder for the app's own small files (recent list, settings). */
-    val dataDir: java.io.File
+    val appFiles: java.io.File
 
     fun pickPdfs(multiple: Boolean, done: (List<Picked>) -> Unit)
 

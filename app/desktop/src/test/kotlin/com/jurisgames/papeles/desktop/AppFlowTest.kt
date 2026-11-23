@@ -62,7 +62,7 @@ fun png(w: Int, h: Int): ByteArray {
 
 /** Picks come from queues the test fills; saves are kept in memory. */
 class FakeHost : Host {
-    override val dataDir: File = Files.createTempDirectory("papeles-test").toFile()
+    override val appFiles: File = Files.createTempDirectory("papeles-test").toFile()
     val pdfs = ArrayDeque<List<Picked>>()
     val pictures = ArrayDeque<List<Picked>>()
     val saved = mutableListOf<Pair<String, ByteArray>>()
@@ -114,7 +114,7 @@ class AppFlowTest {
         onNodeWithTag("back").performClick()
         onNodeWithTag("recent-cats.pdf").assertExists()
         // the recent list survives a restart (it lives in a file)
-        assertTrue(File(host.dataDir, "recent.tsv").readText().contains("cats.pdf"))
+        assertTrue(File(host.appFiles, "recent.tsv").readText().contains("cats.pdf"))
         onNodeWithTag("recent-cats.pdf").performClick()
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("page-1")).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithTag("back").performClick()
