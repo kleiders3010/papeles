@@ -683,6 +683,12 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_pp_ffi_checksum_func_extract_pages(
     ): Int
+    external fun uniffi_pp_ffi_checksum_func_fill_form(
+    ): Int
+    external fun uniffi_pp_ffi_checksum_func_form_fields(
+    ): Int
+    external fun uniffi_pp_ffi_checksum_func_is_signed(
+    ): Int
     external fun uniffi_pp_ffi_checksum_func_load_engine(
     ): Int
     external fun uniffi_pp_ffi_checksum_func_merge(
@@ -749,6 +755,12 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_pp_ffi_fn_func_extract_pages(`input`: RustBuffer.ByValue,`pages`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_pp_ffi_fn_func_fill_form(`input`: RustBuffer.ByValue,`values`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_pp_ffi_fn_func_form_fields(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_pp_ffi_fn_func_is_signed(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
     external fun uniffi_pp_ffi_fn_func_load_engine(`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun uniffi_pp_ffi_fn_func_merge(`inputs`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -892,6 +904,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pp_ffi_checksum_func_extract_pages() and 0xFFFF) != 58631) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pp_ffi_checksum_func_fill_form() and 0xFFFF) != 32789) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pp_ffi_checksum_func_form_fields() and 0xFFFF) != 34609) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pp_ffi_checksum_func_is_signed() and 0xFFFF) != 6203) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pp_ffi_checksum_func_load_engine() and 0xFFFF) != 13574) {
@@ -1176,6 +1197,29 @@ public object FfiConverterFloat: FfiConverter<Float, Float> {
 
     override fun write(value: Float, buf: ByteBuffer) {
         buf.putFloat(value)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterBoolean: FfiConverter<Boolean, Byte> {
+    override fun lift(value: Byte): Boolean {
+        return value.toInt() != 0
+    }
+
+    override fun read(buf: ByteBuffer): Boolean {
+        return lift(buf.get())
+    }
+
+    override fun lower(value: Boolean): Byte {
+        return if (value) 1.toByte() else 0.toByte()
+    }
+
+    override fun allocationSize(value: Boolean) = 1UL
+
+    override fun write(value: Boolean, buf: ByteBuffer) {
+        buf.put(lower(value))
     }
 }
 
@@ -1652,6 +1696,99 @@ public object FfiConverterTypeArea: FfiConverterRustBuffer<Area> {
 
 
 /**
+ * One place to fill on a page; a radio group has one per choice, all with the same name.
+ */
+data class FormField (
+    /**
+     * From 1.
+     */
+    var `page`: kotlin.UInt
+    , 
+    /**
+     * The key for [fill_form].
+     */
+    var `name`: kotlin.String
+    , 
+    var `kind`: FieldKind
+    , 
+    /**
+     * Text and choices: the text. Check and radio: the chosen on-state, or "Off".
+     */
+    var `value`: kotlin.String
+    , 
+    /**
+     * Check and radio: what [fill_form] takes to tick this one.
+     */
+    var `on`: kotlin.String
+    , 
+    var `options`: List<kotlin.String>
+    , 
+    var `readOnly`: kotlin.Boolean
+    , 
+    var `multiline`: kotlin.Boolean
+    , 
+    var `editable`: kotlin.Boolean
+    , 
+    var `area`: Area
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFormField: FfiConverterRustBuffer<FormField> {
+    override fun read(buf: ByteBuffer): FormField {
+        return FormField(
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterTypeFieldKind.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterTypeArea.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FormField) = (
+            FfiConverterUInt.allocationSize(value.`page`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterTypeFieldKind.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`value`) +
+            FfiConverterString.allocationSize(value.`on`) +
+            FfiConverterSequenceString.allocationSize(value.`options`) +
+            FfiConverterBoolean.allocationSize(value.`readOnly`) +
+            FfiConverterBoolean.allocationSize(value.`multiline`) +
+            FfiConverterBoolean.allocationSize(value.`editable`) +
+            FfiConverterTypeArea.allocationSize(value.`area`)
+    )
+
+    override fun write(value: FormField, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`page`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterTypeFieldKind.write(value.`kind`, buf)
+            FfiConverterString.write(value.`value`, buf)
+            FfiConverterString.write(value.`on`, buf)
+            FfiConverterSequenceString.write(value.`options`, buf)
+            FfiConverterBoolean.write(value.`readOnly`, buf)
+            FfiConverterBoolean.write(value.`multiline`, buf)
+            FfiConverterBoolean.write(value.`editable`, buf)
+            FfiConverterTypeArea.write(value.`area`, buf)
+    }
+}
+
+
+
+/**
  * One place the searched words were found: its page (from 1) and one area per line it runs over.
  */
 data class Hit (
@@ -1906,6 +2043,47 @@ public object FfiConverterTypeShrunk: FfiConverterRustBuffer<Shrunk> {
             FfiConverterUInt.write(value.`picturesRedone`, buf)
     }
 }
+
+
+
+/**
+ * What a form field is (plan M4).
+ */
+
+enum class FieldKind {
+    
+    TEXT,
+    CHECK,
+    RADIO,
+    CHOICE,
+    SIGNATURE,
+    OTHER;
+
+    
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFieldKind: FfiConverterRustBuffer<FieldKind> {
+    override fun read(buf: ByteBuffer) = try {
+        FieldKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: FieldKind) = 4UL
+
+    override fun write(value: FieldKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
 
 
 
@@ -2233,6 +2411,34 @@ public object FfiConverterSequenceUInt: FfiConverterRustBuffer<List<kotlin.UInt>
 /**
  * @suppress
  */
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
+            FfiConverterString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.String>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceByteArray: FfiConverterRustBuffer<List<kotlin.ByteArray>> {
     override fun read(buf: ByteBuffer): List<kotlin.ByteArray> {
         val len = buf.getInt()
@@ -2279,6 +2485,34 @@ public object FfiConverterSequenceTypeArea: FfiConverterRustBuffer<List<Area>> {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeArea.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeFormField: FfiConverterRustBuffer<List<FormField>> {
+    override fun read(buf: ByteBuffer): List<FormField> {
+        val len = buf.getInt()
+        return List<FormField>(len) {
+            FfiConverterTypeFormField.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<FormField>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeFormField.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<FormField>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeFormField.write(it, buf)
         }
     }
 }
@@ -2366,6 +2600,45 @@ public object FfiConverterSequenceTypePdfInput: FfiConverterRustBuffer<List<PdfI
         }
     }
 }
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.String, kotlin.String>> {
+    override fun read(buf: ByteBuffer): Map<kotlin.String, kotlin.String> {
+        val len = buf.getInt()
+        return buildMap<kotlin.String, kotlin.String>(len) {
+            repeat(len) {
+                val k = FfiConverterString.read(buf)
+                val v = FfiConverterString.read(buf)
+                this[k] = v
+            }
+        }
+    }
+
+    override fun allocationSize(value: Map<kotlin.String, kotlin.String>): ULong {
+        val spaceForMapSize = 4UL
+        val spaceForChildren = value.map { (k, v) ->
+            FfiConverterString.allocationSize(k) +
+            FfiConverterString.allocationSize(v)
+        }.sum()
+        return spaceForMapSize + spaceForChildren
+    }
+
+    override fun write(value: Map<kotlin.String, kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        // The parens on `(k, v)` here ensure we're calling the right method,
+        // which is important for compatibility with older android devices.
+        // Ref https://blog.danlew.net/2017/03/16/kotlin-puzzler-whose-line-is-it-anyways/
+        value.forEach { (k, v) ->
+            FfiConverterString.write(k, buf)
+            FfiConverterString.write(v, buf)
+        }
+    }
+}
         /**
          * A new PDF made of the picked pages, in the picked order: the page organiser's one operation.
          */
@@ -2424,6 +2697,52 @@ public object FfiConverterSequenceTypePdfInput: FfiConverterRustBuffer<List<PdfI
         
         FfiConverterTypePdfInput.lower(`input`),
         FfiConverterSequenceUInt.lower(`pages`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * A filled copy (by field name). A bad value is an error and nothing is filled.
+         */
+    @Throws(PpException::class) fun `fillForm`(`input`: PdfInput, `values`: Map<kotlin.String, kotlin.String>): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(PpException) { _status ->
+    UniffiLib.uniffi_pp_ffi_fn_func_fill_form(
+    
+        
+        FfiConverterTypePdfInput.lower(`input`),
+        FfiConverterMapStringString.lower(`values`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Every form field, page by page.
+         */
+    @Throws(PpException::class) fun `formFields`(`input`: PdfInput): List<FormField> {
+            return FfiConverterSequenceTypeFormField.lift(
+    uniffiRustCallWithError(PpException) { _status ->
+    UniffiLib.uniffi_pp_ffi_fn_func_form_fields(
+    
+        
+        FfiConverterTypePdfInput.lower(`input`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * True when the PDF is digitally signed: a filled copy loses that signature's proof (the app says so first).
+         */
+    @Throws(PpException::class) fun `isSigned`(`input`: PdfInput): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCallWithError(PpException) { _status ->
+    UniffiLib.uniffi_pp_ffi_fn_func_is_signed(
+    
+        
+        FfiConverterTypePdfInput.lower(`input`),_status)
 }
     )
     }

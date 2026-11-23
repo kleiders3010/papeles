@@ -68,6 +68,7 @@ sealed class Screen {
     data object Home : Screen()
     class Reader(val doc: OpenDoc) : Screen()
     class Pages(val doc: OpenDoc) : Screen()
+    class Fill(val doc: OpenDoc) : Screen()
     data object Join : Screen()
     data object Pictures : Screen()
     data object Shrink : Screen()
@@ -139,7 +140,8 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
                     },
                     forget = { recent = Recent.remove(host.appFiles, it.key) },
                     go = { screen = it })
-                is Screen.Reader -> Reader(s.doc, host, worker, back = { close(s); screen = Screen.Home }, editPages = { screen = Screen.Pages(s.doc) })
+                is Screen.Reader -> Reader(s.doc, host, worker, back = { close(s); screen = Screen.Home }, editPages = { screen = Screen.Pages(s.doc) }, fill = { screen = Screen.Fill(s.doc) })
+                is Screen.Fill -> FillScreen(s.doc, host, worker, back = { screen = Screen.Reader(s.doc) })
                 is Screen.Pages -> PagesScreen(s.doc, host, worker, back = { screen = Screen.Reader(s.doc) })
                 Screen.Join -> JoinScreen(host, worker, back = { screen = Screen.Home })
                 Screen.Pictures -> PicturesScreen(host, worker, back = { screen = Screen.Home })

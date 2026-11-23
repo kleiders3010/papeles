@@ -52,6 +52,18 @@ val ES: Map<String, String> = mapOf(
     "Back" to "Volver",
     "Search" to "Buscar",
     "Search in this PDF" to "Buscar en este PDF",
+    "Zoom in" to "Acercar", "Zoom out" to "Alejar",
+    "Fill in the form" to "Completar el formulario", "Fill: {name}" to "Completar: {name}",
+    "Reading the form…" to "Leyendo el formulario…", "This PDF has no fields to fill." to "Este PDF no tiene campos para completar.",
+    "This PDF is digitally signed. A filled copy no longer proves who signed it." to
+        "Este PDF tiene firma digital. Una copia completada ya no prueba quién lo firmó.",
+    "This PDF is digitally signed. A filled copy no longer proves who signed it. The open file stays as it is." to
+        "Este PDF tiene firma digital. Una copia completada ya no prueba quién lo firmó. El archivo abierto no cambia.",
+    "Save a filled copy?" to "¿Guardar una copia completada?", "Save the copy" to "Guardar la copia",
+    "Save filled copy" to "Guardar copia completada", "Nothing changed yet" to "Todavía no cambiaste nada",
+    "{n} changed" to "{n} cambiados", "Or type it" to "O escribilo", "filled" to "completado",
+    "A digital signature: it can't be filled here." to "Una firma digital: no se puede completar acá.",
+    "This field can't be changed." to "Este campo no se puede cambiar.",
     "{n} found" to "{n} encontrados",
     "Not found" to "No se encontró",
     "Page {n} of {total}" to "Página {n} de {total}",

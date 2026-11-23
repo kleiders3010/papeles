@@ -10,11 +10,13 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import com.jurisgames.papeles.core.PdfInput
 import com.jurisgames.papeles.core.Picture
 import com.jurisgames.papeles.core.countPages
+import com.jurisgames.papeles.core.formFields
 import com.jurisgames.papeles.core.loadEngine
 import com.jurisgames.papeles.core.openPdf
 import com.jurisgames.papeles.ui.AppTheme
@@ -52,6 +54,35 @@ fun textPdf(vararg pages: String): ByteArray {
     for (o in offsets) out.append(String.format("%010d 00000 n \n", o))
     out.append("trailer\n<< /Size ${objs.size + 1} /Root 1 0 R >>\nstartxref\n$xref\n%%EOF\n")
     return out.toString().toByteArray(Charsets.ISO_8859_1)
+}
+
+/** Objects 1..n written as a PDF with counted xref offsets (object 1 is the catalog). */
+fun rawPdf(objs: List<String>): ByteArray {
+    val out = StringBuilder("%PDF-1.7\n")
+    val offsets = objs.mapIndexed { i, o -> out.length.also { out.append("${i + 1} 0 obj\n$o\nendobj\n") } }
+    val xref = out.length
+    out.append("xref\n0 ${objs.size + 1}\n0000000000 65535 f \n")
+    for (o in offsets) out.append(String.format("%010d 00000 n \n", o))
+    out.append("trailer\n<< /Size ${objs.size + 1} /Root 1 0 R >>\nstartxref\n$xref\n%%EOF\n")
+    return out.toString().toByteArray(Charsets.ISO_8859_1)
+}
+
+/** A one-page form: a text field "name" (holding "old") and a checkbox "news" whose on-state is "Si". */
+fun formPdf(): ByteArray {
+    val label = "BT /F1 12 Tf 72 745 Td (Your name) Tj 0 -40 Td (Send me news) Tj ET"
+    val box = "0 g 2 2 8 8 re f"
+    return rawPdf(listOf(
+        "<< /Type /Catalog /Pages 2 0 R /AcroForm 6 0 R >>",
+        "<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R /Annots [7 0 R 8 0 R] >>",
+        "<< /Length ${label.length} >>\nstream\n$label\nendstream",
+        "<< /Fields [7 0 R 8 0 R] /DA (/Helv 12 Tf 0 g) /DR << /Font << /Helv 3 0 R >> >> >>",
+        "<< /Type /Annot /Subtype /Widget /FT /Tx /T (name) /V (old) /Rect [200 740 400 760] /P 4 0 R /DA (/Helv 12 Tf 0 g) >>",
+        "<< /Type /Annot /Subtype /Widget /FT /Btn /T (news) /V /Off /AS /Off /Rect [200 700 212 712] /P 4 0 R /AP << /N << /Si 9 0 R /Off 10 0 R >> >> >>",
+        "<< /Type /XObject /Subtype /Form /BBox [0 0 12 12] /Length ${box.length} >>\nstream\n$box\nendstream",
+        "<< /Type /XObject /Subtype /Form /BBox [0 0 12 12] /Length 0 >>\nstream\n\nendstream",
+    ))
 }
 
 fun png(w: Int, h: Int): ByteArray {
@@ -120,6 +151,60 @@ class AppFlowTest {
         onNodeWithTag("back").performClick()
         onNodeWithTag("forget-cats.pdf").performClick()
         onNodeWithTag("noRecent").assertExists()
+    }
+
+    @Test
+    fun fill_a_form_and_save_a_copy() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("form.pdf", formPdf()))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("fill")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("fill").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("input-name")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("make").assertIsNotEnabled()
+        onNodeWithTag("input-name").performTextClearance()
+        onNodeWithTag("input-name").performTextInput("Ana")
+        onNodeWithTag("input-news").performClick()
+        onAllNodes(hasTestTag("peek")).fetchSemanticsNodes().let { assertTrue(it.isNotEmpty(), "each field shows the page around it") }
+        onNodeWithTag("make").assertIsEnabled().performClick()
+        waitUntil(timeoutMillis = 10_000) { host.saved.isNotEmpty() }
+        val out = host.saved.single().second
+        val f = formFields(PdfInput(out, null)).associateBy { it.name }
+        assertEquals("Ana", f["name"]!!.value) // pinned: what was typed
+        assertEquals("Si", f["news"]!!.value) // pinned: the box's own on-state, not "Yes"
+        // the open file itself is never changed
+        assertEquals("old", formFields(PdfInput(host.files["form.pdf"]!!, null)).first { it.name == "name" }.value) // pinned: source untouched
+    }
+
+    @Test
+    fun a_pdf_without_fields_has_no_fill_button() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("plain.pdf", textPdf("no form here")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("page-1")).fetchSemanticsNodes().isNotEmpty() }
+        waitForIdle()
+        onNodeWithTag("fill").assertDoesNotExist()
+    }
+
+    @Test
+    fun zoom_in_and_out() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("zoom.pdf", textPdf("small print")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("page-1")).fetchSemanticsNodes().isNotEmpty() }
+        val w1 = onNodeWithTag("page-1").fetchSemanticsNode().size.width
+        onNodeWithTag("zoomOut").assertIsNotEnabled()
+        onNodeWithTag("zoomIn").performClick()
+        onNodeWithTag("zoomLevel").assertTextContains("${(com.jurisgames.papeles.ui.ZOOMS[1] * 100).toInt()}%")
+        val w2 = onNodeWithTag("page-1").fetchSemanticsNode().size.width
+        assertTrue(w2 > w1 * (com.jurisgames.papeles.ui.ZOOMS[1] - 0.1f), "the page got wider: $w1 -> $w2")
+        repeat(com.jurisgames.papeles.ui.ZOOMS.size) { runCatching { onNodeWithTag("zoomIn").assertIsEnabled().performClick() } }
+        onNodeWithTag("zoomIn").assertIsNotEnabled()
+        onNodeWithTag("zoomOut").assertIsEnabled().performClick()
+        onNodeWithTag("zoomLevel").assertTextContains("${(com.jurisgames.papeles.ui.ZOOMS[com.jurisgames.papeles.ui.ZOOMS.size - 2] * 100).toInt()}%")
     }
 
     @Test

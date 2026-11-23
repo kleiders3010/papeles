@@ -64,7 +64,7 @@ fun nameWith(name: String, words: String): String {
 
 /** After a save: what was saved and a button to hand it on. */
 @Composable
-private fun SavedRow(host: Host, saved: Picked?, extra: String = "") {
+internal fun SavedRow(host: Host, saved: Picked?, extra: String = "") {
     saved ?: return
     Card(Modifier.fillMaxWidth().padding(16.dp).testTag("saved")) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {

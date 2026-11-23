@@ -27,5 +27,11 @@ object Ic {
     val Up = icon("up", "M12,8l-6,6 1.41,1.41L12,10.83l4.59,4.58L18,14z")
     /** Material "replay": a turn to the left; mirrored, a turn to the right. */
     val TurnLeft = icon("turnLeft", "M12,5V1L7,6l5,5V7c3.31,0 6,2.69 6,6s-2.69,6 -6,6 -6,-2.69 -6,-6H4c0,4.42 3.58,8 8,8s8,-3.58 8,-8 -3.58,-8 -8,-8z")
+    private const val LENS = "M15.5,14h-0.79l-0.28,-0.27C15.41,12.59 16,11.11 16,9.5 16,5.91 13.09,3 9.5,3S3,5.91 3,9.5 5.91,16 9.5,16c1.61,0 3.09,-0.59 4.23,-1.57l0.27,0.28v0.79l5,4.99L20.49,19l-4.99,-5zM9.5,14C7.01,14 5,11.99 5,9.5S7.01,5 9.5,5 14,7.01 14,9.5 11.99,14 9.5,14z"
+    /** Material "zoom_in" / "zoom_out": the search lens with a plus or a minus. */
+    val ZoomIn = icon("zoomIn", "${LENS}M12,10h-2v2H9v-2H7V9h2V7h1v2h2v1z")
+    val ZoomOut = icon("zoomOut", "${LENS}M7,9h5v1H7z")
+    /** Material "edit": a pencil, for filling in a form. */
+    val Fill = icon("fill", "M3,17.25V21h3.75L17.81,9.94l-3.75,-3.75L3,17.25zM20.71,7.04c0.39,-0.39 0.39,-1.02 0,-1.41l-2.34,-2.34c-0.39,-0.39 -1.02,-0.39 -1.41,0l-1.83,1.83 3.75,3.75 1.83,-1.83z")
     val Pages = icon("pages", "M3,5v14h18V5H3zm5,12H5V7h3v10zm5.5,0h-3V7h3v10zm5.5,0h-3V7h3v10z")
 }

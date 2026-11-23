@@ -273,3 +273,75 @@ pub fn shrink(input: PdfInput, level: ShrinkLevel) -> Result<Shrunk> {
     let r = pp_core::make::shrink(&mut d, how)?;
     Ok(Shrunk { bytes: save(d)?, pictures_seen: r.pictures_seen, pictures_redone: r.pictures_redone })
 }
+
+/// What a form field is (plan M4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FieldKind {
+    Text,
+    Check,
+    Radio,
+    Choice,
+    Signature,
+    Other,
+}
+
+/// One place to fill on a page; a radio group has one per choice, all with the same name.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct FormField {
+    /// From 1.
+    pub page: u32,
+    /// The key for [fill_form].
+    pub name: String,
+    pub kind: FieldKind,
+    /// Text and choices: the text. Check and radio: the chosen on-state, or "Off".
+    pub value: String,
+    /// Check and radio: what [fill_form] takes to tick this one.
+    pub on: String,
+    pub options: Vec<String>,
+    pub read_only: bool,
+    pub multiline: bool,
+    pub editable: bool,
+    pub area: Area,
+}
+
+/// Every form field, page by page.
+#[uniffi::export]
+pub fn form_fields(input: PdfInput) -> Result<Vec<FormField>> {
+    let d = load(&input)?;
+    Ok(pp_core::forms::fields(&d)?
+        .into_iter()
+        .map(|f| FormField {
+            page: f.page,
+            name: f.name,
+            kind: match f.kind {
+                pp_core::forms::Kind::Text => FieldKind::Text,
+                pp_core::forms::Kind::Check => FieldKind::Check,
+                pp_core::forms::Kind::Radio => FieldKind::Radio,
+                pp_core::forms::Kind::Choice => FieldKind::Choice,
+                pp_core::forms::Kind::Signature => FieldKind::Signature,
+                pp_core::forms::Kind::Other => FieldKind::Other,
+            },
+            value: f.value,
+            on: f.on,
+            options: f.options,
+            read_only: f.read_only,
+            multiline: f.multiline,
+            editable: f.editable,
+            area: Area { x: f.area.x, y: f.area.y, w: f.area.w, h: f.area.h },
+        })
+        .collect())
+}
+
+/// A filled copy (by field name). A bad value is an error and nothing is filled.
+#[uniffi::export]
+pub fn fill_form(input: PdfInput, values: std::collections::HashMap<String, String>) -> Result<Vec<u8>> {
+    let mut d = load(&input)?;
+    pp_core::forms::fill(&mut d, &values.into_iter().collect())?;
+    save(d)
+}
+
+/// True when the PDF is digitally signed: a filled copy loses that signature's proof (the app says so first).
+#[uniffi::export]
+pub fn is_signed(input: PdfInput) -> Result<bool> {
+    Ok(pp_core::forms::is_signed(&load(&input)?))
+}

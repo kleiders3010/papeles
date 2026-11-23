@@ -6,6 +6,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -45,6 +54,8 @@ import androidx.compose.ui.unit.dp
 import com.jurisgames.papeles.core.Area
 import com.jurisgames.papeles.core.Hit
 import com.jurisgames.papeles.core.PageBox
+import com.jurisgames.papeles.core.PdfInput
+import com.jurisgames.papeles.core.formFields
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -55,11 +66,25 @@ private const val STEP = 256
 /** Widest page picture the reader asks for: sharp on a big screen, small enough for a phone's memory. */
 private const val MAX_WIDTH = 2048
 
+/** Zoomed in, pages are drawn up to this wide: sharper text, still one or two pages' worth of a phone's memory. */
+private const val MAX_ZOOMED_WIDTH = 2560
+
+/** The zoom steps of the buttons (a pinch goes anywhere between the ends). */
+val ZOOMS = listOf(1f, 1.5f, 2f, 3f, 4f)
+
+/** Pages are at most this wide at 1x, so a big screen doesn't show one huge page. */
+private val FIT_MAX = 1000.dp
+
 /** Most search hits gathered at once. */
 private const val MAX_HITS = 500u
 
 @Composable
-fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages: () -> Unit) {
+fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages: () -> Unit, fill: () -> Unit = {}) {
+    // Fill shows only for a PDF with fields to fill (read once, off the main thread)
+    var hasForm by remember(doc) { mutableStateOf(false) }
+    LaunchedEffect(doc) {
+        hasForm = withContext(Dispatchers.IO) { runCatching { fillable(formFields(PdfInput(doc.bytes, doc.password))) }.getOrDefault(false) }
+    }
     val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var searching by remember { mutableStateOf(false) }
@@ -67,6 +92,10 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
     var hits by remember { mutableStateOf<List<Hit>?>(null) }
     var at by remember { mutableStateOf(0) }
     val sizes = remember(doc) { HashMap<Int, PageBox>() }
+    var zoom by remember(doc) { mutableStateOf(1f) }
+    fun zoomBy(up: Boolean) {
+        zoom = if (up) ZOOMS.firstOrNull { it > zoom + 0.01f } ?: ZOOMS.last() else ZOOMS.lastOrNull { it < zoom - 0.01f } ?: ZOOMS.first()
+    }
 
     fun show(i: Int) {
         val h = hits ?: return
@@ -86,6 +115,10 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
             IconButton(onClick = { searching = !searching; if (!searching) { hits = null; query = "" } }, modifier = Modifier.testTag("search")) {
                 Icon(Ic.Search, tr("Search in this PDF"))
             }
+            IconButton(onClick = { zoomBy(false) }, enabled = zoom > ZOOMS.first() + 0.01f, modifier = Modifier.testTag("zoomOut")) { Icon(Ic.ZoomOut, tr("Zoom out")) }
+            Text("${(zoom * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("zoomLevel"))
+            IconButton(onClick = { zoomBy(true) }, enabled = zoom < ZOOMS.last() - 0.01f, modifier = Modifier.testTag("zoomIn")) { Icon(Ic.ZoomIn, tr("Zoom in")) }
+            if (hasForm) IconButton(onClick = fill, modifier = Modifier.testTag("fill")) { Icon(Ic.Fill, tr("Fill in the form")) }
             IconButton(onClick = editPages, modifier = Modifier.testTag("editPages")) { Icon(Ic.Pages, tr("Edit pages")) }
         }
         if (searching) {
@@ -104,17 +137,27 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
                 }
             }
         }
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant)) {
-            val px = constraints.maxWidth
-            val bucket = (((px + STEP - 1) / STEP) * STEP).coerceIn(STEP, MAX_WIDTH)
+        // a pinch zooms (one finger still scrolls); wider than the screen, the pages scroll sideways too
+        val pinch = rememberTransformableState { change, _, _ -> zoom = (zoom * change).coerceIn(ZOOMS.first(), ZOOMS.last()) }
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant)
+            .transformable(pinch, canPan = { false })) {
+            val density = LocalDensity.current
+            val fit = minOf(maxWidth - 16.dp, FIT_MAX)
+            val pageW = fit * zoom
+            val px = with(density) { pageW.roundToPx() }
+            val bucket = (((px + STEP - 1) / STEP) * STEP).coerceIn(STEP, if (zoom > 1.01f) MAX_ZOOMED_WIDTH else MAX_WIDTH)
             val current = hits?.getOrNull(at)
-            LazyColumn(Modifier.fillMaxSize().testTag("pages"), state = list, contentPadding = PaddingValues(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                items(doc.pages) { i ->
-                    val n = i + 1
-                    val box = sizes.getOrPut(n) { runCatching { doc.file.pageSize(n.toUInt()) }.getOrDefault(PageBox(595f, 842f)) }
-                    val marks = hits?.filter { it.page.toInt() == n }.orEmpty()
-                    PageView(doc, host, n, box, bucket, marks, current?.takeIf { it.page.toInt() == n })
+            val sideways = rememberScrollState()
+            val listW = maxOf(maxWidth, pageW + 16.dp)
+            Box(Modifier.fillMaxSize().horizontalScroll(sideways, enabled = pageW + 16.dp > maxWidth)) {
+                LazyColumn(Modifier.width(listW).fillMaxHeight().testTag("pages"), state = list, contentPadding = PaddingValues(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    items(doc.pages) { i ->
+                        val n = i + 1
+                        val box = sizes.getOrPut(n) { runCatching { doc.file.pageSize(n.toUInt()) }.getOrDefault(PageBox(595f, 842f)) }
+                        val marks = hits?.filter { it.page.toInt() == n }.orEmpty()
+                        PageView(doc, host, n, box, pageW, bucket, marks, current?.takeIf { it.page.toInt() == n })
+                    }
                 }
             }
         }
@@ -125,13 +168,13 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
 }
 
 @Composable
-private fun PageView(doc: OpenDoc, host: Host, n: Int, box: PageBox, width: Int, marks: List<Hit>, current: Hit?) {
+private fun PageView(doc: OpenDoc, host: Host, n: Int, box: PageBox, shown: Dp, width: Int, marks: List<Hit>, current: Hit?) {
     var img by remember(doc, n, width) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(doc, n, width) {
         img = withContext(Dispatchers.IO) { runCatching { host.image(doc.file.render(n.toUInt(), width)) }.getOrNull() }
     }
     val ratio = (box.width / box.height).takeIf { it.isFinite() && it > 0.05f && it < 20f } ?: 0.707f
-    Box(Modifier.widthIn(max = 1000.dp).fillMaxWidth().aspectRatio(ratio).background(Color.White)
+    Box(Modifier.width(shown).aspectRatio(ratio).background(Color.White)
         .semantics { contentDescription = tr("Page {n} of {total}", "n" to n, "total" to doc.pages) }.testTag("page-$n")) {
         img?.let { Image(it, null, Modifier.fillMaxSize()) }
         if (marks.isNotEmpty()) Canvas(Modifier.fillMaxSize()) {
