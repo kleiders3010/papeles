@@ -94,7 +94,7 @@ private fun FileList(files: MutableList<Picked>, modifier: Modifier) {
 }
 
 @Composable
-private fun <T> Choice(options: List<Triple<T, String, String>>, chosen: T, tagPrefix: String, pick: (T) -> Unit) {
+internal fun <T> Choice(options: List<Triple<T, String, String>>, chosen: T, tagPrefix: String, pick: (T) -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp)) {
         for ((value, label, about) in options) {
             Row(Modifier.fillMaxWidth().selectable(chosen == value, role = Role.RadioButton) { pick(value) }.padding(vertical = 4.dp)

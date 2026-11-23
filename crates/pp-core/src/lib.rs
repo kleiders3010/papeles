@@ -1,9 +1,12 @@
 //! Papeles core: PDF work that runs on the device (plan: SelfSustainment/research/pdf-app-plan-2026-11-23.md).
 //! Every file opened here may be hostile: loads are bounded (stream inflation, page count) and errors are values,
 //! never panics across the app boundary.
+pub mod annotate;
 pub mod forms;
 pub mod make;
 pub mod pages;
+pub mod scan;
+pub mod stamp;
 pub mod view;
 
 pub use lopdf;

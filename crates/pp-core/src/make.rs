@@ -30,7 +30,7 @@ impl PageSize {
     }
 }
 
-fn limits() -> Limits {
+pub(crate) fn limits() -> Limits {
     let mut l = Limits::default();
     l.max_image_width = Some(MAX_SIDE);
     l.max_image_height = Some(MAX_SIDE);
@@ -38,7 +38,7 @@ fn limits() -> Limits {
     l
 }
 
-fn decode(bytes: &[u8]) -> Result<(DynamicImage, Option<ImageFormat>)> {
+pub(crate) fn decode(bytes: &[u8]) -> Result<(DynamicImage, Option<ImageFormat>)> {
     let mut r = ImageReader::new(Cursor::new(bytes)).with_guessed_format().map_err(|e| Error::Damaged(e.to_string()))?;
     let format = r.format();
     if format.is_none() {

@@ -54,6 +54,19 @@ class MainActivity : ComponentActivity(), Host {
     private val pickPics = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         deliver(onPictures, uris); onPictures = null
     }
+    // the scanner's camera: the system camera app writes the photo to a file of ours, read once and deleted
+    private var onPhoto: ((List<Picked>) -> Unit)? = null
+    private var photoFile: java.io.File? = null
+    private val shoot = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val f = photoFile
+        val done = onPhoto
+        photoFile = null
+        onPhoto = null
+        val bytes = if (ok && f != null && f.length() > 0) runCatching { f.readBytes() }.getOrNull() else null
+        f?.delete()
+        done?.invoke(if (bytes == null) emptyList() else listOf(Picked("photo.jpg", "photo:" + System.currentTimeMillis()) { bytes }))
+    }
+
     private val create = registerForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val bytes = pendingSave
         pendingSave = null
@@ -87,6 +100,20 @@ class MainActivity : ComponentActivity(), Host {
     override fun pickPictures(done: (List<Picked>) -> Unit) {
         onPictures = done
         pickPics.launch(arrayOf("image/jpeg", "image/png"))
+    }
+
+    override fun takePhoto(done: (List<Picked>) -> Unit) {
+        val dir = java.io.File(cacheDir, "camera").apply { mkdirs() }
+        dir.listFiles()?.forEach { it.delete() } // a photo left by an interrupted shot
+        val f = java.io.File(dir, "page-${System.currentTimeMillis()}.jpg")
+        photoFile = f
+        onPhoto = done
+        runCatching { shoot.launch(androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", f)) }.onFailure {
+            // no camera app on this device: choose photos instead
+            photoFile = null
+            onPhoto = null
+            pickPictures(done)
+        }
     }
 
     override fun save(suggested: String, bytes: ByteArray, done: (Picked?) -> Unit) {

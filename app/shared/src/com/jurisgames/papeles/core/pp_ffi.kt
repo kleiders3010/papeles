@@ -675,6 +675,8 @@ internal object IntegrityCheckingUniffiLib {
     }
 
     internal fun ensureInitialized() = Unit
+    external fun uniffi_pp_ffi_checksum_func_add_marks(
+    ): Int
     external fun uniffi_pp_ffi_checksum_func_arrange(
     ): Int
     external fun uniffi_pp_ffi_checksum_func_count_pages(
@@ -687,6 +689,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_pp_ffi_checksum_func_form_fields(
     ): Int
+    external fun uniffi_pp_ffi_checksum_func_ink_picture(
+    ): Int
     external fun uniffi_pp_ffi_checksum_func_is_signed(
     ): Int
     external fun uniffi_pp_ffi_checksum_func_load_engine(
@@ -695,13 +699,23 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_pp_ffi_checksum_func_open_pdf(
     ): Int
+    external fun uniffi_pp_ffi_checksum_func_photo_corners(
+    ): Int
+    external fun uniffi_pp_ffi_checksum_func_photo_preview(
+    ): Int
     external fun uniffi_pp_ffi_checksum_func_pictures_to_pdf(
     ): Int
     external fun uniffi_pp_ffi_checksum_func_rotate_pages(
     ): Int
+    external fun uniffi_pp_ffi_checksum_func_scan_page(
+    ): Int
     external fun uniffi_pp_ffi_checksum_func_shrink(
     ): Int
     external fun uniffi_pp_ffi_checksum_func_split(
+    ): Int
+    external fun uniffi_pp_ffi_checksum_func_stamp_pictures(
+    ): Int
+    external fun uniffi_pp_ffi_checksum_func_text_box_size(
     ): Int
     external fun uniffi_pp_ffi_checksum_method_pdffile_page_count(
     ): Int
@@ -747,6 +761,8 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_pp_ffi_fn_method_pdffile_text(`ptr`: Long,`page`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_pp_ffi_fn_func_add_marks(`input`: RustBuffer.ByValue,`marks`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_pp_ffi_fn_func_arrange(`inputs`: RustBuffer.ByValue,`picks`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_pp_ffi_fn_func_count_pages(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -759,6 +775,8 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_pp_ffi_fn_func_form_fields(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_pp_ffi_fn_func_ink_picture(`lines`: RustBuffer.ByValue,`pen`: Float,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_pp_ffi_fn_func_is_signed(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
     external fun uniffi_pp_ffi_fn_func_load_engine(`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -767,13 +785,23 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_pp_ffi_fn_func_open_pdf(`bytes`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
+    external fun uniffi_pp_ffi_fn_func_photo_corners(`photo`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_pp_ffi_fn_func_photo_preview(`photo`: RustBuffer.ByValue,`maxSide`: Int,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_pp_ffi_fn_func_pictures_to_pdf(`pictures`: RustBuffer.ByValue,`paper`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_pp_ffi_fn_func_rotate_pages(`input`: RustBuffer.ByValue,`pages`: RustBuffer.ByValue,`turn`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_pp_ffi_fn_func_scan_page(`photo`: RustBuffer.ByValue,`corners`: RustBuffer.ByValue,`look`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_pp_ffi_fn_func_shrink(`input`: RustBuffer.ByValue,`level`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_pp_ffi_fn_func_split(`input`: RustBuffer.ByValue,`starts`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_pp_ffi_fn_func_stamp_pictures(`input`: RustBuffer.ByValue,`at`: RustBuffer.ByValue,`picture`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_pp_ffi_fn_func_text_box_size(`text`: RustBuffer.ByValue,`size`: Float,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun ffi_pp_ffi_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -894,6 +922,9 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
+    if ((lib.uniffi_pp_ffi_checksum_func_add_marks() and 0xFFFF) != 26317) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_pp_ffi_checksum_func_arrange() and 0xFFFF) != 47213) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -912,6 +943,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_pp_ffi_checksum_func_form_fields() and 0xFFFF) != 34609) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_pp_ffi_checksum_func_ink_picture() and 0xFFFF) != 50483) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_pp_ffi_checksum_func_is_signed() and 0xFFFF) != 6203) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -924,16 +958,31 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_pp_ffi_checksum_func_open_pdf() and 0xFFFF) != 58701) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_pp_ffi_checksum_func_photo_corners() and 0xFFFF) != 33923) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pp_ffi_checksum_func_photo_preview() and 0xFFFF) != 49810) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_pp_ffi_checksum_func_pictures_to_pdf() and 0xFFFF) != 36830) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pp_ffi_checksum_func_rotate_pages() and 0xFFFF) != 3053) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_pp_ffi_checksum_func_scan_page() and 0xFFFF) != 22240) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_pp_ffi_checksum_func_shrink() and 0xFFFF) != 2978) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pp_ffi_checksum_func_split() and 0xFFFF) != 29483) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pp_ffi_checksum_func_stamp_pictures() and 0xFFFF) != 5598) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pp_ffi_checksum_func_text_box_size() and 0xFFFF) != 40446) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pp_ffi_checksum_method_pdffile_page_count() and 0xFFFF) != 16665) {
@@ -1830,6 +1879,83 @@ public object FfiConverterTypeHit: FfiConverterRustBuffer<Hit> {
 
 
 /**
+ * One line of a drawn signature: the points the finger or mouse went through.
+ */
+data class InkLine (
+    var `points`: List<InkPoint>
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInkLine: FfiConverterRustBuffer<InkLine> {
+    override fun read(buf: ByteBuffer): InkLine {
+        return InkLine(
+            FfiConverterSequenceTypeInkPoint.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: InkLine) = (
+            FfiConverterSequenceTypeInkPoint.allocationSize(value.`points`)
+    )
+
+    override fun write(value: InkLine, buf: ByteBuffer) {
+            FfiConverterSequenceTypeInkPoint.write(value.`points`, buf)
+    }
+}
+
+
+
+/**
+ * A point of a drawn line (screen units, y down).
+ */
+data class InkPoint (
+    var `x`: kotlin.Float
+    , 
+    var `y`: kotlin.Float
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInkPoint: FfiConverterRustBuffer<InkPoint> {
+    override fun read(buf: ByteBuffer): InkPoint {
+        return InkPoint(
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: InkPoint) = (
+            FfiConverterFloat.allocationSize(value.`x`) +
+            FfiConverterFloat.allocationSize(value.`y`)
+    )
+
+    override fun write(value: InkPoint, buf: ByteBuffer) {
+            FfiConverterFloat.write(value.`x`, buf)
+            FfiConverterFloat.write(value.`y`, buf)
+    }
+}
+
+
+
+/**
  * A page's size in points, as shown (rotation applied).
  */
 data class PageBox (
@@ -1958,6 +2084,47 @@ public object FfiConverterTypePdfInput: FfiConverterRustBuffer<PdfInput> {
 
 
 /**
+ * A point in a photo's pixels (as the photo shows once turned upright), x right, y down.
+ */
+data class PhotoPoint (
+    var `x`: kotlin.Float
+    , 
+    var `y`: kotlin.Float
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePhotoPoint: FfiConverterRustBuffer<PhotoPoint> {
+    override fun read(buf: ByteBuffer): PhotoPoint {
+        return PhotoPoint(
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: PhotoPoint) = (
+            FfiConverterFloat.allocationSize(value.`x`) +
+            FfiConverterFloat.allocationSize(value.`y`)
+    )
+
+    override fun write(value: PhotoPoint, buf: ByteBuffer) {
+            FfiConverterFloat.write(value.`x`, buf)
+            FfiConverterFloat.write(value.`y`, buf)
+    }
+}
+
+
+
+/**
  * A page drawn as RGBA pixels, row by row.
  */
 data class Picture (
@@ -2047,6 +2214,47 @@ public object FfiConverterTypeShrunk: FfiConverterRustBuffer<Shrunk> {
 
 
 /**
+ * Where one copy of a picture goes: its page (from 1) and area in points from the top left, as the page shows.
+ */
+data class StampAt (
+    var `page`: kotlin.UInt
+    , 
+    var `area`: Area
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStampAt: FfiConverterRustBuffer<StampAt> {
+    override fun read(buf: ByteBuffer): StampAt {
+        return StampAt(
+            FfiConverterUInt.read(buf),
+            FfiConverterTypeArea.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: StampAt) = (
+            FfiConverterUInt.allocationSize(value.`page`) +
+            FfiConverterTypeArea.allocationSize(value.`area`)
+    )
+
+    override fun write(value: StampAt, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`page`, buf)
+            FfiConverterTypeArea.write(value.`area`, buf)
+    }
+}
+
+
+
+/**
  * What a form field is (plan M4).
  */
 
@@ -2080,6 +2288,153 @@ public object FfiConverterTypeFieldKind: FfiConverterRustBuffer<FieldKind> {
 
     override fun write(value: FieldKind, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * A mark laid on a page (plan M4): typed text, highlighter, pen. Points as the page shows, from its top left.
+ */
+sealed class Mark {
+    
+    /**
+     * `text` (lines split on '\n') with its top left at (x, y), `size` points tall, black.
+     */
+    data class Text(
+        val `page`: kotlin.UInt, 
+        val `x`: kotlin.Float, 
+        val `y`: kotlin.Float, 
+        val `text`: kotlin.String, 
+        val `size`: kotlin.Float) : Mark()
+        
+    {
+        
+
+        companion object
+    }
+    
+    /**
+     * Yellow highlighter over each area.
+     */
+    data class Highlight(
+        val `page`: kotlin.UInt, 
+        val `areas`: List<com.jurisgames.papeles.core.Area>) : Mark()
+        
+    {
+        
+
+        companion object
+    }
+    
+    /**
+     * Pen lines, `pen` points wide, dark blue.
+     */
+    data class Pen(
+        val `page`: kotlin.UInt, 
+        val `lines`: List<com.jurisgames.papeles.core.InkLine>, 
+        val `pen`: kotlin.Float) : Mark()
+        
+    {
+        
+
+        companion object
+    }
+    
+
+    
+
+    
+    
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMark : FfiConverterRustBuffer<Mark>{
+    override fun read(buf: ByteBuffer): Mark {
+        return when(buf.getInt()) {
+            1 -> Mark.Text(
+                FfiConverterUInt.read(buf),
+                FfiConverterFloat.read(buf),
+                FfiConverterFloat.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterFloat.read(buf),
+                )
+            2 -> Mark.Highlight(
+                FfiConverterUInt.read(buf),
+                FfiConverterSequenceTypeArea.read(buf),
+                )
+            3 -> Mark.Pen(
+                FfiConverterUInt.read(buf),
+                FfiConverterSequenceTypeInkLine.read(buf),
+                FfiConverterFloat.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: Mark): ULong = when(value) {
+        is Mark.Text -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUInt.allocationSize(value.`page`)
+                + FfiConverterFloat.allocationSize(value.`x`)
+                + FfiConverterFloat.allocationSize(value.`y`)
+                + FfiConverterString.allocationSize(value.`text`)
+                + FfiConverterFloat.allocationSize(value.`size`)
+            )
+        }
+        is Mark.Highlight -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUInt.allocationSize(value.`page`)
+                + FfiConverterSequenceTypeArea.allocationSize(value.`areas`)
+            )
+        }
+        is Mark.Pen -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUInt.allocationSize(value.`page`)
+                + FfiConverterSequenceTypeInkLine.allocationSize(value.`lines`)
+                + FfiConverterFloat.allocationSize(value.`pen`)
+            )
+        }
+    }
+
+    override fun write(value: Mark, buf: ByteBuffer) {
+        when(value) {
+            is Mark.Text -> {
+                buf.putInt(1)
+                FfiConverterUInt.write(value.`page`, buf)
+                FfiConverterFloat.write(value.`x`, buf)
+                FfiConverterFloat.write(value.`y`, buf)
+                FfiConverterString.write(value.`text`, buf)
+                FfiConverterFloat.write(value.`size`, buf)
+                Unit
+            }
+            is Mark.Highlight -> {
+                buf.putInt(2)
+                FfiConverterUInt.write(value.`page`, buf)
+                FfiConverterSequenceTypeArea.write(value.`areas`, buf)
+                Unit
+            }
+            is Mark.Pen -> {
+                buf.putInt(3)
+                FfiConverterUInt.write(value.`page`, buf)
+                FfiConverterSequenceTypeInkLine.write(value.`lines`, buf)
+                FfiConverterFloat.write(value.`pen`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 }
 
@@ -2303,6 +2658,47 @@ public object FfiConverterTypePpError : FfiConverterRustBuffer<PpException> {
 
 
 
+/**
+ * How a scanned page is cleaned up.
+ */
+
+enum class ScanLook {
+    
+    /**
+     * White paper, dark ink: shadows and tint taken out.
+     */
+    DOCUMENT,
+    GREY,
+    COLOUR;
+
+    
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeScanLook: FfiConverterRustBuffer<ScanLook> {
+    override fun read(buf: ByteBuffer) = try {
+        ScanLook.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ScanLook) = 4UL
+
+    override fun write(value: ScanLook, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
 
 enum class ShrinkLevel {
     
@@ -2401,6 +2797,34 @@ public object FfiConverterSequenceUInt: FfiConverterRustBuffer<List<kotlin.UInt>
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterUInt.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceFloat: FfiConverterRustBuffer<List<kotlin.Float>> {
+    override fun read(buf: ByteBuffer): List<kotlin.Float> {
+        val len = buf.getInt()
+        return List<kotlin.Float>(len) {
+            FfiConverterFloat.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.Float>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterFloat.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.Float>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterFloat.write(it, buf)
         }
     }
 }
@@ -2551,6 +2975,62 @@ public object FfiConverterSequenceTypeHit: FfiConverterRustBuffer<List<Hit>> {
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeInkLine: FfiConverterRustBuffer<List<InkLine>> {
+    override fun read(buf: ByteBuffer): List<InkLine> {
+        val len = buf.getInt()
+        return List<InkLine>(len) {
+            FfiConverterTypeInkLine.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<InkLine>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeInkLine.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<InkLine>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeInkLine.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeInkPoint: FfiConverterRustBuffer<List<InkPoint>> {
+    override fun read(buf: ByteBuffer): List<InkPoint> {
+        val len = buf.getInt()
+        return List<InkPoint>(len) {
+            FfiConverterTypeInkPoint.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<InkPoint>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeInkPoint.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<InkPoint>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeInkPoint.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypePagePick: FfiConverterRustBuffer<List<PagePick>> {
     override fun read(buf: ByteBuffer): List<PagePick> {
         val len = buf.getInt()
@@ -2607,6 +3087,90 @@ public object FfiConverterSequenceTypePdfInput: FfiConverterRustBuffer<List<PdfI
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypePhotoPoint: FfiConverterRustBuffer<List<PhotoPoint>> {
+    override fun read(buf: ByteBuffer): List<PhotoPoint> {
+        val len = buf.getInt()
+        return List<PhotoPoint>(len) {
+            FfiConverterTypePhotoPoint.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<PhotoPoint>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypePhotoPoint.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<PhotoPoint>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypePhotoPoint.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeStampAt: FfiConverterRustBuffer<List<StampAt>> {
+    override fun read(buf: ByteBuffer): List<StampAt> {
+        val len = buf.getInt()
+        return List<StampAt>(len) {
+            FfiConverterTypeStampAt.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<StampAt>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeStampAt.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<StampAt>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeStampAt.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMark: FfiConverterRustBuffer<List<Mark>> {
+    override fun read(buf: ByteBuffer): List<Mark> {
+        val len = buf.getInt()
+        return List<Mark>(len) {
+            FfiConverterTypeMark.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<Mark>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMark.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<Mark>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMark.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.String, kotlin.String>> {
     override fun read(buf: ByteBuffer): Map<kotlin.String, kotlin.String> {
         val len = buf.getInt()
@@ -2639,6 +3203,22 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
         }
     }
 }
+        /**
+         * A copy with `marks` laid on as standard annotations (other readers can still move or delete them).
+         */
+    @Throws(PpException::class) fun `addMarks`(`input`: PdfInput, `marks`: List<Mark>): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(PpException) { _status ->
+    UniffiLib.uniffi_pp_ffi_fn_func_add_marks(
+    
+        
+        FfiConverterTypePdfInput.lower(`input`),
+        FfiConverterSequenceTypeMark.lower(`marks`),_status)
+}
+    )
+    }
+    
+
         /**
          * A new PDF made of the picked pages, in the picked order: the page organiser's one operation.
          */
@@ -2734,6 +3314,23 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
     
 
         /**
+         * A drawn signature as a PNG: dark blue ink on nothing, cropped to the drawing. `pen` is the line width in the
+         * same units as the points.
+         */
+    @Throws(PpException::class) fun `inkPicture`(`lines`: List<InkLine>, `pen`: kotlin.Float): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(PpException) { _status ->
+    UniffiLib.uniffi_pp_ffi_fn_func_ink_picture(
+    
+        
+        FfiConverterSequenceTypeInkLine.lower(`lines`),
+        FfiConverterFloat.lower(`pen`),_status)
+}
+    )
+    }
+    
+
+        /**
          * True when the PDF is digitally signed: a filled copy loses that signature's proof (the app says so first).
          */
     @Throws(PpException::class) fun `isSigned`(`input`: PdfInput): kotlin.Boolean {
@@ -2794,6 +3391,38 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
     
 
         /**
+         * A photo's size once turned upright, then the paper's corners in it: top left, top right, bottom right, bottom
+         * left. [width, height, x1, y1, ... x4, y4].
+         */
+    @Throws(PpException::class) fun `photoCorners`(`photo`: kotlin.ByteArray): List<kotlin.Float> {
+            return FfiConverterSequenceFloat.lift(
+    uniffiRustCallWithError(PpException) { _status ->
+    UniffiLib.uniffi_pp_ffi_fn_func_photo_corners(
+    
+        
+        FfiConverterByteArray.lower(`photo`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * A photo turned upright and made at most `max_side` pixels on its longest side, to show while placing corners.
+         */
+    @Throws(PpException::class) fun `photoPreview`(`photo`: kotlin.ByteArray, `maxSide`: kotlin.UInt): Picture {
+            return FfiConverterTypePicture.lift(
+    uniffiRustCallWithError(PpException) { _status ->
+    UniffiLib.uniffi_pp_ffi_fn_func_photo_preview(
+    
+        
+        FfiConverterByteArray.lower(`photo`),
+        FfiConverterUInt.lower(`maxSide`),_status)
+}
+    )
+    }
+    
+
+        /**
          * One page per picture (JPEG or PNG), in order.
          */
     @Throws(PpException::class) fun `picturesToPdf`(`pictures`: List<kotlin.ByteArray>, `paper`: Paper): kotlin.ByteArray {
@@ -2827,6 +3456,23 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
     
 
         /**
+         * The paper inside `corners` straightened and cleaned, as a JPEG ready to be a page (Pictures to PDF).
+         */
+    @Throws(PpException::class) fun `scanPage`(`photo`: kotlin.ByteArray, `corners`: List<PhotoPoint>, `look`: ScanLook): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(PpException) { _status ->
+    UniffiLib.uniffi_pp_ffi_fn_func_scan_page(
+    
+        
+        FfiConverterByteArray.lower(`photo`),
+        FfiConverterSequenceTypePhotoPoint.lower(`corners`),
+        FfiConverterTypeScanLook.lower(`look`),_status)
+}
+    )
+    }
+    
+
+        /**
          * A smaller copy: pictures re-encoded (each kept only if it got smaller), streams packed.
          */
     @Throws(PpException::class) fun `shrink`(`input`: PdfInput, `level`: ShrinkLevel): Shrunk {
@@ -2853,6 +3499,38 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
         
         FfiConverterTypePdfInput.lower(`input`),
         FfiConverterSequenceUInt.lower(`starts`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * A copy with `picture` (PNG or JPEG) laid at every place in `at`; transparency kept.
+         */
+    @Throws(PpException::class) fun `stampPictures`(`input`: PdfInput, `at`: List<StampAt>, `picture`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(PpException) { _status ->
+    UniffiLib.uniffi_pp_ffi_fn_func_stamp_pictures(
+    
+        
+        FfiConverterTypePdfInput.lower(`input`),
+        FfiConverterSequenceTypeStampAt.lower(`at`),
+        FfiConverterByteArray.lower(`picture`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The box typed text takes at `size` points: (width, height) in points.
+         */ fun `textBoxSize`(`text`: kotlin.String, `size`: kotlin.Float): List<kotlin.Float> {
+            return FfiConverterSequenceFloat.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pp_ffi_fn_func_text_box_size(
+    
+        
+        FfiConverterString.lower(`text`),
+        FfiConverterFloat.lower(`size`),_status)
 }
     )
     }

@@ -7,9 +7,13 @@ use lopdf::{dictionary, Document, Object, Stream};
 use pp_core::view::Engine;
 use pp_core::Error;
 
-fn engine() -> Engine {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../vendor/pdfium/win-x64/bin");
-    Engine::load(&dir).expect("run scripts/fetch_pdfium.sh first")
+/// PDFium binds once per process: every check shares one engine (tests run in parallel threads).
+fn engine() -> &'static Engine {
+    static E: std::sync::OnceLock<Engine> = std::sync::OnceLock::new();
+    E.get_or_init(|| {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../vendor/pdfium/win-x64/bin");
+        Engine::load(&dir).expect("run scripts/fetch_pdfium.sh first")
+    })
 }
 
 /// Pages with the given lines of text (Helvetica 20 pt, from the top), 595 x 842 except where `wide` turns it.

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The scanner's camera writes each photo here (the app's cache), read once and deleted. Nothing else is shared. -->
+<paths>
+    <cache-path name="camera" path="camera/" />
+</paths>

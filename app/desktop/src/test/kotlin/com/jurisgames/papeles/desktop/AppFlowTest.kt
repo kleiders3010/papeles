@@ -4,14 +4,21 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.runComposeUiTest
 import com.jurisgames.papeles.core.PdfInput
 import com.jurisgames.papeles.core.Picture
@@ -135,6 +142,11 @@ class AppFlowTest {
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("page-1")).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithTag("title").assertTextContains("cats.pdf")
         onNodeWithTag("pageOf").assertTextContains("Page 1 of 3")
+        // the strip of small pages: a tap goes to that page
+        onNodeWithTag("thumb-3").performClick()
+        waitUntil(timeoutMillis = 5_000) { runCatching { onNodeWithTag("pageOf").assertTextContains("Page 1 of 3") }.isFailure } // (page 3 may share the screen with page 2: it only has to move on)
+        onNodeWithTag("thumb-1").performClick()
+        waitUntil(timeoutMillis = 5_000) { runCatching { onNodeWithTag("pageOf").assertTextContains("Page 1 of 3") }.isSuccess }
         onNodeWithTag("search").performClick()
         onNodeWithTag("searchField").performTextInput("CAT")
         onNodeWithTag("searchGo").performClick()
@@ -175,6 +187,116 @@ class AppFlowTest {
         assertEquals("Si", f["news"]!!.value) // pinned: the box's own on-state, not "Yes"
         // the open file itself is never changed
         assertEquals("old", formFields(PdfInput(host.files["form.pdf"]!!, null)).first { it.name == "name" }.value) // pinned: source untouched
+    }
+
+    @Test
+    fun draw_a_signature_place_it_and_save_a_signed_copy() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("letter.pdf", textPdf("Dear sir")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("sign")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("sign").performClick()
+        // no signature kept yet: the pad opens by itself
+        onNodeWithTag("useSignature").assertIsNotEnabled()
+        onNodeWithTag("pad").performTouchInput {
+            down(Offset(width * 0.1f, height * 0.7f))
+            moveTo(Offset(width * 0.3f, height * 0.2f)); moveTo(Offset(width * 0.5f, height * 0.7f)); moveTo(Offset(width * 0.9f, height * 0.3f))
+            up()
+        }
+        onNodeWithTag("useSignature").assertIsEnabled().performClick()
+        assertTrue(File(host.appFiles, "signature.txt").readText().isNotBlank(), "the signature is kept on the device")
+        onNodeWithTag("make").assertIsNotEnabled()
+        // (the page is taller than the window: tap in its part that shows, a fifth of the way down)
+        onNodeWithTag("signPage-1").performTouchInput { click(Offset(width * 0.5f, height * 0.2f)) }
+        onNodeWithTag("signHint").assertTextContains("1", substring = true)
+        onNodeWithTag("make").assertIsEnabled().performClick()
+        waitUntil(timeoutMillis = 10_000) { host.saved.isNotEmpty() }
+        val out = host.saved.single().second
+        assertEquals("letter (signed).pdf", host.saved.single().first) // pinned: named after the open file
+        // the saved page has ink around its middle (where it was tapped), and none at the top corner
+        openPdf(out, null).use { f ->
+            val p = f.render(1u, 595)
+            fun dark(x: Int, y: Int, r: Int) = (-r..r).any { dx -> (-r..r).any { dy ->
+                val i = ((y + dy) * p.width.toInt() + (x + dx)) * 4
+                p.rgba[i].toInt() and 0xFF < 120 && p.rgba[i + 2].toInt() and 0xFF > 60 } }
+            // (a test tap is placed on the part of the page that shows, so where exactly it lands on a page taller
+            // than the window is not known here; stamp_test.rs checks the exact spot)
+            val cx = p.width.toInt() / 2
+            assertTrue((40 until p.height.toInt() * 3 / 10 step 10).any { dark(cx, it, 30) }, "ink in the upper part, across the middle")
+            assertTrue((p.height.toInt() / 2 until p.height.toInt() - 20 step 10).none { dark(cx, it, 10) }, "none lower down")
+            assertTrue(!dark(30, 30, 10), "no ink in the top corner")
+        }
+        assertEquals(1, pages(host.files["letter.pdf"]!!)) // pinned: the open file is untouched
+    }
+
+    @Test
+    fun type_highlight_and_write_on_a_page_and_save_a_marked_copy() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("letter.pdf", textPdf("Dear sir")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("mark")).fetchSemanticsNodes().isNotEmpty() }
+        val direct = runCatching {
+            com.jurisgames.papeles.core.addMarks(PdfInput(host.files["letter.pdf"]!!, null), listOf(
+                com.jurisgames.papeles.core.Mark.Text(1u, 60f, 250f, "Hola, sí", 16f),
+                com.jurisgames.papeles.core.Mark.Highlight(1u, listOf(com.jurisgames.papeles.core.Area(60f, 400f, 200f, 30f))),
+                com.jurisgames.papeles.core.Mark.Pen(1u, listOf(com.jurisgames.papeles.core.InkLine(listOf(
+                    com.jurisgames.papeles.core.InkPoint(60f, 650f), com.jurisgames.papeles.core.InkPoint(400f, 650f)))), 2f)))
+        }
+        assertTrue(direct.isSuccess, "addMarks on its own: ${direct.exceptionOrNull()}")
+        onNodeWithTag("mark").performClick()
+        onNodeWithTag("make").assertIsNotEnabled()
+        // highlighter: drag across the middle; pen: a line low on the page
+        onNodeWithTag("toolHighlight").performClick()
+        onNodeWithTag("toolHighlight").assertIsSelected()
+        onNodeWithTag("markPage-1").performTouchInput {
+            down(Offset(width * 0.1f, height * 0.5f)); moveTo(Offset(width * 0.4f, height * 0.52f)); moveTo(Offset(width * 0.6f, height * 0.55f)); up()
+        }
+        onNodeWithTag("toolPen").performClick()
+        onNodeWithTag("toolPen").assertIsSelected()
+        onNodeWithTag("markPage-1").performTouchInput {
+            down(Offset(width * 0.1f, height * 0.8f)); moveTo(Offset(width * 0.3f, height * 0.8f)); moveTo(Offset(width * 0.5f, height * 0.8f))
+            moveTo(Offset(width * 0.8f, height * 0.8f)); up()
+        }
+        // undo takes the last one away, and it can be drawn again
+        onNodeWithTag("undoMark").performClick()
+        onNodeWithTag("markPage-1").performTouchInput {
+            down(Offset(width * 0.1f, height * 0.8f)); moveTo(Offset(width * 0.3f, height * 0.8f)); moveTo(Offset(width * 0.5f, height * 0.8f))
+            moveTo(Offset(width * 0.8f, height * 0.8f)); up()
+        }
+        // text: back to the text tool, tap, type, a size up, add
+        onNodeWithTag("toolText").performClick()
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.1f, height * 0.3f)) }
+        onNodeWithTag("addText").assertIsNotEnabled()
+        onNodeWithTag("markText").performTextInput("Hola, sí")
+        onNodeWithTag("textBigger").performClick()
+        onNodeWithTag("textSize").assertTextContains("16", substring = true)
+        onNodeWithTag("addText").assertIsEnabled().performClick()
+        waitForIdle()
+        // the dialog is gone before the next tap (a tap while it closes lands on its fading layer)
+        waitUntil(timeoutMillis = 5_000) { onAllNodes(hasTestTag("markText")).fetchSemanticsNodes().isEmpty() }
+        mainClock.advanceTimeBy(1_000)
+        waitForIdle()
+        // (through its action, not a tap: tells a tap lost after the dialog from a save that fails)
+        onNodeWithTag("make").assertIsEnabled().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        runCatching { waitUntil(timeoutMillis = 10_000) { host.saved.isNotEmpty() } }.onFailure {
+            println("MARK not saved: " + com.jurisgames.papeles.ui.Worker.lastError + " " + onRoot().printToString()); throw it }
+        assertEquals("letter (marked).pdf", host.saved.single().first) // pinned: named after the open file
+        openPdf(host.saved.single().second, null).use { f ->
+            val p = f.render(1u, 600)
+            val (w, h) = p.width.toInt() to p.height.toInt()
+            fun px(x: Float, y: Float): IntArray { val i = ((y * h).toInt() * w + (x * w).toInt()) * 4; return IntArray(3) { p.rgba[i + it].toInt() and 0xFF } }
+            fun near(x: Float, y: Float, r: Int, ok: (IntArray) -> Boolean) = (-r..r).any { dx -> (-r..r).any { dy -> ok(px(x + dx / w.toFloat(), y + dy / h.toFloat())) } }
+            val dark = { c: IntArray -> c[0] < 110 && c[1] < 110 }
+            val yellow = { c: IntArray -> c[0] > 200 && c[1] > 180 && c[2] < 140 }
+            assertTrue(near(0.15f, 0.31f, 12, dark), "the typed text where it was tapped")
+            assertTrue(yellow(px(0.35f, 0.525f)), "highlighted in the middle")
+            assertTrue(!yellow(px(0.35f, 0.45f)), "nothing highlighted above it")
+            assertTrue(near(0.45f, 0.8f, 3, dark), "the pen line low on the page")
+            assertTrue(!near(0.45f, 0.7f, 3, dark), "and only there")
+        }
+        assertEquals(1, pages(host.files["letter.pdf"]!!)) // pinned: the open file is untouched
     }
 
     @Test
@@ -251,6 +373,58 @@ class AppFlowTest {
         waitUntil(timeoutMillis = 10_000) { host.saved.isNotEmpty() }
         assertEquals("one.pdf", host.saved.single().first) // pinned: named after the first picture
         assertEquals(2, pages(host.saved.single().second)) // pinned: two pictures
+    }
+
+    @Test
+    fun scan_two_photos_reorder_and_save_clean_pages() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        onNodeWithTag("scan").performClick()
+        onNodeWithTag("make").assertIsNotEnabled()
+        // a cream sheet with one dark bar on a dark table, a little tilted; the second with two bars
+        fun photo(bars: Int): ByteArray {
+            val img = BufferedImage(600, 700, BufferedImage.TYPE_INT_RGB)
+            val g = img.createGraphics()
+            g.color = java.awt.Color(70, 45, 30); g.fillRect(0, 0, 600, 700)
+            g.color = java.awt.Color(235, 228, 205); g.fillPolygon(intArrayOf(110, 500, 530, 80), intArrayOf(70, 95, 600, 570), 4)
+            g.color = java.awt.Color(30, 30, 35)
+            for (b in 0 until bars) g.fillRect(180, 250 + b * 150, 240, 24)
+            g.dispose()
+            return ByteArrayOutputStream().also { ImageIO.write(img, "png", it) }.toByteArray()
+        }
+        host.pictures += listOf(host.file("a.png", photo(1)), host.file("b.png", photo(2)))
+        onNodeWithTag("takePhoto").performClick() // no camera here: it chooses photos
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("scanPhoto")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("scanPage-2").assertExists()
+        // the second page goes first; the first gets the grey look
+        onNodeWithTag("earlier").assertIsNotEnabled() // the first new photo shows first
+        onNodeWithTag("scanPage-2").performClick()
+        onNodeWithTag("later").assertIsNotEnabled()
+        onNodeWithTag("earlier").performClick()
+        onNodeWithTag("earlier").assertIsNotEnabled()
+        onNodeWithTag("scanPage-2").performClick()
+        onNodeWithTag("lookGREY").performClick()
+        onNodeWithTag("lookGREY").assertIsSelected()
+        onNodeWithTag("make").assertIsEnabled().performClick()
+        waitUntil(timeoutMillis = 20_000) { host.saved.isNotEmpty() }
+        assertEquals("Scan.pdf", host.saved.single().first) // pinned: the scanner's name for its PDF
+        val out = host.saved.single().second
+        assertEquals(2, pages(out)) // pinned: two photos
+        openPdf(out, null).use { f ->
+            // page 1 is the two-bar photo, cleaned as a document: white around, two dark bars down the middle column
+            val p = f.render(1u, 400)
+            val (w, h) = p.width.toInt() to p.height.toInt()
+            fun v(x: Int, y: Int) = p.rgba[(y * w + x) * 4].toInt() and 0xFF
+            var runs = 0
+            var inRun = false
+            for (y in 0 until h) {
+                val dark = v(w / 2, y) < 90
+                if (dark && !inRun) runs++
+                inRun = dark
+            }
+            assertEquals(2, runs, "two bars on the first page") // pinned: the photo drawn with two
+            assertTrue(v(w / 2, h / 10) > 230, "white paper above them")
+        }
     }
 
     @Test

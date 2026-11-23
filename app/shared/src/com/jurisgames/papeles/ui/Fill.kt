@@ -3,6 +3,7 @@ package com.jurisgames.papeles.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -142,19 +143,22 @@ private fun Peek(doc: OpenDoc, host: Host, group: Group, cache: HashMap<UInt, Im
         if (img == null) img = withContext(Dispatchers.IO) { runCatching { host.image(doc.file.render(f.page, PEEK_WIDTH)) }.getOrNull() }
         cache[f.page] = img
     }
-    val bm = img ?: return
     val box = remember(doc, f.page) { runCatching { doc.file.pageSize(f.page) }.getOrNull() } ?: return
-    val s = bm.width / box.width
     // every widget of the group, plus room for a label: 180 points to the left, 24 above
     val x0 = (group.widgets.minOf { it.area.x } - 180f).coerceAtLeast(0f)
     val y0 = (group.widgets.minOf { it.area.y } - 24f).coerceAtLeast(0f)
     val x1 = (group.widgets.maxOf { it.area.x + it.area.w } + 12f).coerceAtMost(box.width)
     val y1 = (group.widgets.maxOf { it.area.y + it.area.h } + 6f).coerceAtMost(box.height)
     if (x1 <= x0 || y1 <= y0) return
-    val off = IntOffset((x0 * s).toInt(), (y0 * s).toInt())
-    val size = IntSize(((x1 - x0) * s).toInt().coerceIn(1, bm.width - off.x), ((y1 - y0) * s).toInt().coerceIn(1, bm.height - off.y))
-    Image(BitmapPainter(bm, off, size), null, Modifier.fillMaxWidth().aspectRatio(size.width.toFloat() / size.height).heightIn(max = 160.dp)
-        .background(Color.White).testTag("peek"))
+    // the space is kept from the start (known from the page, not the picture), so nothing below moves when the
+    // picture arrives (2026-11-23: a checkbox moved between press and release and the tap was lost)
+    Box(Modifier.fillMaxWidth().aspectRatio((x1 - x0) / (y1 - y0)).heightIn(max = 160.dp).background(Color.White).testTag("peek")) {
+        val bm = img ?: return@Box
+        val s = bm.width / box.width
+        val off = IntOffset((x0 * s).toInt(), (y0 * s).toInt())
+        val size = IntSize(((x1 - x0) * s).toInt().coerceIn(1, bm.width - off.x), ((y1 - y0) * s).toInt().coerceIn(1, bm.height - off.y))
+        Image(BitmapPainter(bm, off, size), null, Modifier.fillMaxSize())
+    }
 }
 
 @Composable

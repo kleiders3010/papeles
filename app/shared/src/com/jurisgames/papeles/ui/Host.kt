@@ -18,6 +18,9 @@ interface Host {
 
     fun pickPictures(done: (List<Picked>) -> Unit)
 
+    /** A new photo from the camera (scanner); where there is none, choosing photos. */
+    fun takePhoto(done: (List<Picked>) -> Unit) = pickPictures(done)
+
     /** Saves `bytes` where the person chooses, `suggested` as the starting name; calls back with what was saved. */
     fun save(suggested: String, bytes: ByteArray, done: (Picked?) -> Unit)
 

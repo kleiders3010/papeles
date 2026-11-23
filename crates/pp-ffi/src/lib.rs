@@ -345,3 +345,138 @@ pub fn fill_form(input: PdfInput, values: std::collections::HashMap<String, Stri
 pub fn is_signed(input: PdfInput) -> Result<bool> {
     Ok(pp_core::forms::is_signed(&load(&input)?))
 }
+
+/// A point of a drawn line (screen units, y down).
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct InkPoint {
+    pub x: f32,
+    pub y: f32,
+}
+
+/// One line of a drawn signature: the points the finger or mouse went through.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct InkLine {
+    pub points: Vec<InkPoint>,
+}
+
+/// A drawn signature as a PNG: dark blue ink on nothing, cropped to the drawing. `pen` is the line width in the
+/// same units as the points.
+#[uniffi::export]
+pub fn ink_picture(lines: Vec<InkLine>, pen: f32) -> Result<Vec<u8>> {
+    let strokes: Vec<Vec<(f32, f32)>> = lines.iter().map(|l| l.points.iter().map(|p| (p.x, p.y)).collect()).collect();
+    Ok(pp_core::stamp::ink_picture(&strokes, pen)?)
+}
+
+/// Where one copy of a picture goes: its page (from 1) and area in points from the top left, as the page shows.
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct StampAt {
+    pub page: u32,
+    pub area: Area,
+}
+
+/// A copy with `picture` (PNG or JPEG) laid at every place in `at`; transparency kept.
+#[uniffi::export]
+pub fn stamp_pictures(input: PdfInput, at: Vec<StampAt>, picture: Vec<u8>) -> Result<Vec<u8>> {
+    if at.is_empty() {
+        return Err(PpError::Empty);
+    }
+    let mut d = load(&input)?;
+    for s in &at {
+        pp_core::stamp::stamp(&mut d, s.page, pp_core::view::Area { x: s.area.x, y: s.area.y, w: s.area.w, h: s.area.h }, &picture)?;
+    }
+    save(d)
+}
+
+/// A mark laid on a page (plan M4): typed text, highlighter, pen. Points as the page shows, from its top left.
+#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+pub enum Mark {
+    /// `text` (lines split on '\n') with its top left at (x, y), `size` points tall, black.
+    Text { page: u32, x: f32, y: f32, text: String, size: f32 },
+    /// Yellow highlighter over each area.
+    Highlight { page: u32, areas: Vec<Area> },
+    /// Pen lines, `pen` points wide, dark blue.
+    Pen { page: u32, lines: Vec<InkLine>, pen: f32 },
+}
+
+/// The box typed text takes at `size` points: (width, height) in points.
+#[uniffi::export]
+pub fn text_box_size(text: String, size: f32) -> Vec<f32> {
+    let (_, w, h) = pp_core::annotate::text_box(&text, size);
+    vec![w, h]
+}
+
+/// A copy with `marks` laid on as standard annotations (other readers can still move or delete them).
+#[uniffi::export]
+pub fn add_marks(input: PdfInput, marks: Vec<Mark>) -> Result<Vec<u8>> {
+    if marks.is_empty() {
+        return Err(PpError::Empty);
+    }
+    let mut d = load(&input)?;
+    let mut by_page: std::collections::BTreeMap<u32, Vec<pp_core::annotate::Mark>> = Default::default();
+    for m in marks {
+        let (page, core) = match m {
+            Mark::Text { page, x, y, text, size } => (page, pp_core::annotate::Mark::Text { at: (x, y), text, size }),
+            Mark::Highlight { page, areas } => (page, pp_core::annotate::Mark::Highlight {
+                areas: areas.iter().map(|a| pp_core::view::Area { x: a.x, y: a.y, w: a.w, h: a.h }).collect(),
+            }),
+            Mark::Pen { page, lines, pen } => (page, pp_core::annotate::Mark::Ink {
+                lines: lines.iter().map(|l| l.points.iter().map(|p| (p.x, p.y)).collect()).collect(),
+                pen,
+            }),
+        };
+        by_page.entry(page).or_default().push(core);
+    }
+    for (page, marks) in &by_page {
+        pp_core::annotate::annotate(&mut d, *page, marks)?;
+    }
+    save(d)
+}
+
+/// A point in a photo's pixels (as the photo shows once turned upright), x right, y down.
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct PhotoPoint {
+    pub x: f32,
+    pub y: f32,
+}
+
+/// How a scanned page is cleaned up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ScanLook {
+    /// White paper, dark ink: shadows and tint taken out.
+    Document,
+    Grey,
+    Colour,
+}
+
+/// A photo's size once turned upright, then the paper's corners in it: top left, top right, bottom right, bottom
+/// left. [width, height, x1, y1, ... x4, y4].
+#[uniffi::export]
+pub fn photo_corners(photo: Vec<u8>) -> Result<Vec<f32>> {
+    let img = pp_core::scan::open_photo(&photo)?;
+    let mut out = vec![img.width() as f32, img.height() as f32];
+    for p in pp_core::scan::find_corners(&img) {
+        out.extend([p.x, p.y]);
+    }
+    Ok(out)
+}
+
+/// The paper inside `corners` straightened and cleaned, as a JPEG ready to be a page (Pictures to PDF).
+#[uniffi::export]
+pub fn scan_page(photo: Vec<u8>, corners: Vec<PhotoPoint>, look: ScanLook) -> Result<Vec<u8>> {
+    let c: [PhotoPoint; 4] = corners.try_into().map_err(|_| PpError::Damaged { why: "four corners".into() })?;
+    let img = pp_core::scan::open_photo(&photo)?;
+    let page = pp_core::scan::straighten(&img, &c.map(|p| pp_core::scan::Pt { x: p.x, y: p.y }))?;
+    let look = match look {
+        ScanLook::Document => pp_core::scan::Look::Document,
+        ScanLook::Grey => pp_core::scan::Look::Grey,
+        ScanLook::Colour => pp_core::scan::Look::Colour,
+    };
+    Ok(pp_core::scan::page_jpeg(&pp_core::scan::clean(&page, look))?)
+}
+
+/// A photo turned upright and made at most `max_side` pixels on its longest side, to show while placing corners.
+#[uniffi::export]
+pub fn photo_preview(photo: Vec<u8>, max_side: u32) -> Result<Picture> {
+    let img = pp_core::scan::preview(&pp_core::scan::open_photo(&photo)?, max_side.clamp(64, 4096));
+    Ok(Picture { width: img.width(), height: img.height(), rgba: img.into_raw() })
+}

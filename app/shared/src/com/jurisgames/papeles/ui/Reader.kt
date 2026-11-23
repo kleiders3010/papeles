@@ -23,7 +23,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -79,7 +83,7 @@ private val FIT_MAX = 1000.dp
 private const val MAX_HITS = 500u
 
 @Composable
-fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages: () -> Unit, fill: () -> Unit = {}) {
+fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages: () -> Unit, fill: () -> Unit = {}, sign: () -> Unit = {}, mark: () -> Unit = {}) {
     // Fill shows only for a PDF with fields to fill (read once, off the main thread)
     var hasForm by remember(doc) { mutableStateOf(false) }
     LaunchedEffect(doc) {
@@ -119,6 +123,8 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
             Text("${(zoom * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("zoomLevel"))
             IconButton(onClick = { zoomBy(true) }, enabled = zoom < ZOOMS.last() - 0.01f, modifier = Modifier.testTag("zoomIn")) { Icon(Ic.ZoomIn, tr("Zoom in")) }
             if (hasForm) IconButton(onClick = fill, modifier = Modifier.testTag("fill")) { Icon(Ic.Fill, tr("Fill in the form")) }
+            IconButton(onClick = sign, modifier = Modifier.testTag("sign")) { Icon(Ic.Sign, tr("Sign")) }
+            IconButton(onClick = mark, modifier = Modifier.testTag("mark")) { Icon(Ic.Mark, tr("Mark up")) }
             IconButton(onClick = editPages, modifier = Modifier.testTag("editPages")) { Icon(Ic.Pages, tr("Edit pages")) }
         }
         if (searching) {
@@ -162,8 +168,44 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
             }
         }
         val first by remember { derivedStateOf { list.firstVisibleItemIndex + 1 } }
+        // every page small along the bottom (plan M1): a tap goes to it; the one being read is outlined
+        if (doc.pages > 1) {
+            val strip = rememberLazyListState()
+            LaunchedEffect(first) {
+                val seen = strip.layoutInfo.visibleItemsInfo.map { it.index }
+                if (first - 1 !in seen.drop(1).dropLast(1)) strip.animateScrollToItem(maxOf(0, first - 2))
+            }
+            LazyRow(Modifier.fillMaxWidth().height(THUMB_H + 12.dp).testTag("thumbs"), state = strip, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                items(doc.pages) { i ->
+                    val n = i + 1
+                    val box = sizes.getOrPut(n) { runCatching { doc.file.pageSize(n.toUInt()) }.getOrDefault(PageBox(595f, 842f)) }
+                    PageThumb(doc, host, n, box, n == first) { scope.launch { list.animateScrollToItem(i) } }
+                }
+            }
+        }
         Text(tr("Page {n} of {total}", "n" to first, "total" to doc.pages), style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.align(Alignment.CenterHorizontally).padding(6.dp).testTag("pageOf"))
+    }
+}
+
+/** How tall a page is in the strip of small pages. */
+private val THUMB_H = 64.dp
+
+@Composable
+private fun PageThumb(doc: OpenDoc, host: Host, n: Int, box: PageBox, current: Boolean, go: () -> Unit) {
+    var img by remember(doc, n) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(doc, n) {
+        img = withContext(Dispatchers.IO) { runCatching { host.image(doc.file.render(n.toUInt(), 96)) }.getOrNull() }
+    }
+    val ratio = (box.width / box.height).takeIf { it.isFinite() && it > 0.2f && it < 5f } ?: 0.707f
+    val edge = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+    // the whole small page is the button: at least 48 dp wide even for a tall narrow page
+    Box(Modifier.height(THUMB_H).widthIn(min = 48.dp).clickable(onClick = go)
+        .semantics { contentDescription = tr("Go to page {n}", "n" to n) }.testTag("thumb-$n"), contentAlignment = Alignment.Center) {
+        Box(Modifier.height(THUMB_H).aspectRatio(ratio).background(Color.White).border(if (current) 2.dp else 1.dp, edge)) {
+            img?.let { Image(it, null, Modifier.fillMaxSize()) }
+        }
     }
 }
 

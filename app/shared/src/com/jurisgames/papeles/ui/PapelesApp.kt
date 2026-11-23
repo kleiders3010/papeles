@@ -69,8 +69,11 @@ sealed class Screen {
     class Reader(val doc: OpenDoc) : Screen()
     class Pages(val doc: OpenDoc) : Screen()
     class Fill(val doc: OpenDoc) : Screen()
+    class Sign(val doc: OpenDoc) : Screen()
+    class Mark(val doc: OpenDoc) : Screen()
     data object Join : Screen()
     data object Pictures : Screen()
+    data object Scan : Screen()
     data object Shrink : Screen()
 }
 
@@ -85,8 +88,13 @@ class Worker(private val scope: CoroutineScope, private val snack: SnackbarHostS
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching(work) }
             busy = false
-            r.onSuccess(done).onFailure { say(userError(it)) }
+            r.onSuccess(done).onFailure { lastError = it; say(userError(it)) }
         }
+    }
+
+    companion object {
+        /** The last failure, raw (the person only sees [userError]); tests read it to say why. */
+        @Volatile var lastError: Throwable? = null
     }
 
     fun say(text: String) {
@@ -140,11 +148,14 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
                     },
                     forget = { recent = Recent.remove(host.appFiles, it.key) },
                     go = { screen = it })
-                is Screen.Reader -> Reader(s.doc, host, worker, back = { close(s); screen = Screen.Home }, editPages = { screen = Screen.Pages(s.doc) }, fill = { screen = Screen.Fill(s.doc) })
+                is Screen.Reader -> Reader(s.doc, host, worker, back = { close(s); screen = Screen.Home }, editPages = { screen = Screen.Pages(s.doc) }, fill = { screen = Screen.Fill(s.doc) }, sign = { screen = Screen.Sign(s.doc) }, mark = { screen = Screen.Mark(s.doc) })
+                is Screen.Sign -> SignScreen(s.doc, host, worker, back = { screen = Screen.Reader(s.doc) })
+                is Screen.Mark -> MarkScreen(s.doc, host, worker, back = { screen = Screen.Reader(s.doc) })
                 is Screen.Fill -> FillScreen(s.doc, host, worker, back = { screen = Screen.Reader(s.doc) })
                 is Screen.Pages -> PagesScreen(s.doc, host, worker, back = { screen = Screen.Reader(s.doc) })
                 Screen.Join -> JoinScreen(host, worker, back = { screen = Screen.Home })
                 Screen.Pictures -> PicturesScreen(host, worker, back = { screen = Screen.Home })
+                Screen.Scan -> ScanScreen(host, worker, back = { screen = Screen.Home })
                 Screen.Shrink -> ShrinkScreen(host, worker, back = { screen = Screen.Home })
             }
             if (worker.busy) Busy()
@@ -195,6 +206,7 @@ private fun Home(host: Host, recent: List<RecentFile>, worker: Worker, onTheme: 
                 Action(Ic.Search, tr("Open a PDF"), "open") { host.pickPdfs(false) { it.firstOrNull()?.let(open) } }
             }
             item { Action(Ic.Add, tr("Join PDFs"), "join") { go(Screen.Join) } }
+            item { Action(Ic.Scan, tr("Scan"), "scan") { go(Screen.Scan) } }
             item { Action(Ic.Image, tr("Pictures to PDF"), "pictures") { go(Screen.Pictures) } }
             item { Action(Ic.Down, tr("Make smaller"), "shrink") { go(Screen.Shrink) } }
             item {
