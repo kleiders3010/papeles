@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 lopdf = "0.47.0"
+pdfium-render = { version = "0.9.6", default-features = false, features = ["pdfium_latest", "image_025", "thread_safe"] }

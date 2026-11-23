@@ -3,6 +3,7 @@
 //! never panics across the app boundary.
 pub mod make;
 pub mod pages;
+pub mod view;
 
 use lopdf::{Document, LoadOptions};
 
