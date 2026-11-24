@@ -154,6 +154,8 @@ class AppFlowTest {
         onNodeWithTag("hitCount").assertTextContains("2 found", substring = true)
         onNodeWithTag("hitNext").performClick()
         onNodeWithTag("hitCount").assertTextContains("2/2", substring = true)
+        onNodeWithTag("back").performClick() // closes the search first (U-P22)
+        onNodeWithTag("searchField").assertDoesNotExist()
         onNodeWithTag("back").performClick()
         onNodeWithTag("recent-cats.pdf").assertExists()
         // the recent list survives a restart (it lives in a file)
@@ -365,6 +367,12 @@ class AppFlowTest {
         waitUntil(timeoutMillis = 5_000) { onAllNodes(hasTestTag("saved")).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithTag("share").performClick()
         assertEquals(1, host.shared.size) // pinned: one share
+        // U-P23: the name says what the file is, not the button ("b (join pdfs).pdf")
+        assertEquals("b (joined).pdf", host.saved.single().first) // pinned: the first file's name + "(joined)"
+        // U-P6: Open takes the new file straight to the reader
+        onNodeWithTag("openSaved").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("search")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("title").assertTextContains("b (joined).pdf")
     }
 
     @Test
@@ -413,7 +421,8 @@ class AppFlowTest {
         onNodeWithTag("lookGREY").assertIsSelected()
         onNodeWithTag("make").assertIsEnabled().performClick()
         waitUntil(timeoutMillis = 20_000) { host.saved.isNotEmpty() }
-        assertEquals("Scan.pdf", host.saved.single().first) // pinned: the scanner's name for its PDF
+        assertEquals(com.jurisgames.papeles.ui.scanName(), host.saved.single().first) // the scanner's name: "Scan <date>.pdf"
+        assertEquals("Scan 2026-11-24.pdf", com.jurisgames.papeles.ui.scanName(java.time.LocalDate.of(2026, 11, 24))) // pinned: U-P23
         val out = host.saved.single().second
         assertEquals(2, pages(out)) // pinned: two photos
         openPdf(out, null).use { f ->
@@ -502,6 +511,79 @@ class AppFlowTest {
         waitForIdle()
         onNodeWithTag("leaveAnyway").performClick()
         onNodeWithTag("editPages").assertExists()
+    }
+
+    /** U-P2 guard: Sign / Fill in a form / Mark up / Edit pages are on the first screen and go straight into the tool */
+    @Test
+    fun home_entries_pick_a_file_and_go_straight_into_the_tool() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("one.pdf", textPdf("page one", "page two")))
+        onNodeWithTag("homeSign").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("signPage-1")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("back").performClick() // nothing placed: back to the file's reader
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("tools")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("back").performClick()
+        // a paper with no fields: "Fill in a form" types on it (Mark's text tool)
+        host.pdfs += listOf(host.file("flat.pdf", textPdf("no fields here")))
+        onNodeWithTag("homeFill").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("markPage-1")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("toolText").assertIsSelected()
+        onNodeWithTag("back").performClick()
+        onNodeWithTag("back").performClick()
+        host.pdfs += listOf(host.file("one.pdf", textPdf("page one", "page two")))
+        onNodeWithTag("homePages").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("card-2")).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    /** U-P14 guard: Edit pages saves only the chosen pages, and splits after a page into two PDFs */
+    @Test
+    fun edit_pages_saves_chosen_pages_and_splits() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("three.pdf", textPdf("page one", "page two", "page three")))
+        onNodeWithTag("homePages").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("card-2")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("keepChosen").assertIsNotEnabled()
+        onNodeWithTag("splitAfter").assertIsNotEnabled()
+        onNodeWithTag("card-2").performClick()
+        onNodeWithTag("keepChosen").assertIsEnabled().performClick()
+        waitUntil(timeoutMillis = 10_000) { host.saved.size == 1 }
+        assertEquals("three (chosen pages).pdf", host.saved[0].first) // pinned: U-P23 names say what the file is
+        assertEquals(1, pages(host.saved[0].second)) // pinned: page 2 only
+        openPdf(host.saved[0].second, null).use { assertTrue(it.text(1u).contains("page two")) }
+        onNodeWithTag("splitAfter").assertIsEnabled().performClick() // after page 2: pages 1-2, then page 3
+        waitUntil(timeoutMillis = 10_000) { host.saved.size == 3 }
+        assertEquals("three (part 1).pdf", host.saved[1].first) // pinned: U-P23 names say what the file is
+        assertEquals(2, pages(host.saved[1].second)) // pinned: pages 1 and 2
+        assertEquals(1, pages(host.saved[2].second)) // pinned: page 3
+        openPdf(host.saved[2].second, null).use { assertTrue(it.text(1u).contains("page three")) }
+        onNodeWithTag("card-3").performClick() // two chosen: no split
+        onNodeWithTag("splitAfter").assertIsNotEnabled()
+    }
+
+    /** U-P22 guard: with the search box or Mark's text bar open, Back closes that first (it closed the whole PDF) */
+    @Test
+    fun back_closes_the_search_and_the_text_bar_first() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("three.pdf", textPdf("page one", "page two", "page three")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("search")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("search").performClick()
+        onNodeWithTag("searchField").assertExists()
+        com.jurisgames.papeles.ui.SystemBack.current!!.invoke()
+        waitForIdle()
+        onNodeWithTag("searchField").assertDoesNotExist()
+        onNodeWithTag("search").assertExists() // still reading the PDF
+        onNodeWithTag("mark").performClick()
+        onNodeWithTag("toolText").performClick()
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.1f, height * 0.3f)) }
+        onNodeWithTag("markText").assertExists()
+        com.jurisgames.papeles.ui.SystemBack.current!!.invoke()
+        waitForIdle()
+        onNodeWithTag("markText").assertDoesNotExist()
+        onNodeWithTag("toolText").assertExists() // still marking
     }
 
     @Test

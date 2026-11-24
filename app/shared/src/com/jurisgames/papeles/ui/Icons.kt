@@ -40,4 +40,7 @@ object Ic {
     val Scan = icon("scan", "M7,3H4v3H2V1h5V3zM22,6V1h-5v2h3v3H22zM7,21H4v-3H2v5h5V21zM20,18v3h-3v2h5v-5H20zM17,5H7v14h10V5zM15,8H9v2h6V8zM15,11H9v2h6V11zM15,14H9v2h6V14z")
     val Mark = icon("mark", "M3,10h11v2H3V10zM3,8h11V6H3V8zM3,16h7v-2H3V16zM18.01,12.87l0.71,-0.71c0.39,-0.39 1.02,-0.39 1.41,0l0.71,0.71c0.39,0.39 0.39,1.02 0,1.41l-0.71,0.71L18.01,12.87zM17.3,13.58l-5.3,5.3V21h2.12l5.3,-5.3L17.3,13.58z")
     val Pages = icon("pages", "M3,5v14h18V5H3zm5,12H5V7h3v10zm5.5,0h-3V7h3v10zm5.5,0h-3V7h3v10z")
+    // U-P24: Open was a magnifying glass (reads as search), Make smaller a down chevron (reads as expand)
+    val Open = icon("open", "M20,6h-8l-2,-2H4c-1.1,0 -1.99,0.9 -1.99,2L2,18c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V8c0,-1.1 -0.9,-2 -2,-2zM20,18H4V8h16v10z")
+    val Shrink = icon("shrink", "M8,19h3v3h2v-3h3l-4,-4 -4,4zM16,4h-3V1h-2v3H8l4,4 4,-4zM4,9v2h16V9H4zM4,12h16v2H4z")
 }

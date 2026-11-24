@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -64,17 +65,24 @@ fun nameWith(name: String, words: String): String {
     return "$base ($words).pdf"
 }
 
-/** After a save: what was saved and a button to hand it on. */
+/** Opens a file in the reader (PapelesApp's open), for the saved row's Open. */
+val LocalOpen = androidx.compose.runtime.staticCompositionLocalOf<((Picked) -> Unit)?> { null }
+
+/** After a save: what was saved and where (U-P6), Open in the reader, and a button to hand it on. */
 @Composable
 internal fun SavedRow(host: Host, saved: Picked?, extra: String = "") {
     saved ?: return
+    val open = LocalOpen.current
+    val folder = remember(saved) { host.folderOf(saved) }
     Card(Modifier.fillMaxWidth().padding(16.dp).testTag("saved")) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(tr("Saved: {name}", "name" to saved.name), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("savedExtra"))
+        Column(Modifier.padding(14.dp)) {
+            Text(if (folder != null) tr("Saved in {folder}: {name}", "folder" to folder, "name" to saved.name) else tr("Saved: {name}", "name" to saved.name),
+                maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("savedName"))
+            if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("savedExtra"))
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                if (open != null) TextButton(onClick = { open(saved) }, modifier = Modifier.testTag("openSaved")) { Text(tr("Open")) }
+                OutlinedButton(onClick = { host.share(saved) }, modifier = Modifier.padding(start = 8.dp).testTag("share")) { Text(tr("Share")) }
             }
-            OutlinedButton(onClick = { host.share(saved) }, modifier = Modifier.testTag("share")) { Text(tr("Share")) }
         }
     }
 }
@@ -126,7 +134,7 @@ fun JoinScreen(host: Host, worker: Worker, back: () -> Unit) {
             Button(onClick = {
                 val list = files.toList()
                 worker.run({ merge(list.map { PdfInput(it.read(), null) }) }) { bytes ->
-                    host.save(nameWith(list.first().name, tr("Join PDFs").lowercase()), bytes) { saved = it }
+                    host.save(nameWith(list.first().name, tr("joined")), bytes) { saved = it }
                 }
             }, enabled = files.size >= 2, modifier = Modifier.testTag("make")) { Text(tr("Save as PDF")) }
         }
@@ -181,7 +189,7 @@ fun ShrinkScreen(host: Host, worker: Worker, back: () -> Unit) {
                 val l = level
                 worker.run({ val b = src.read(); b.size to shrink(PdfInput(b, null), l) }) { (before, r) ->
                     if (r.bytes.size >= before) worker.say(tr("This PDF is already as small as it gets here."))
-                    else host.save(nameWith(src.name, tr("Make smaller").lowercase()), r.bytes) {
+                    else host.save(nameWith(src.name, tr("smaller")), r.bytes) {
                         saved = it
                         sizes = tr("{before} → {after}", "before" to sizeLabel(before.toLong()), "after" to sizeLabel(r.bytes.size.toLong()))
                     }
@@ -196,6 +204,7 @@ fun ShrinkScreen(host: Host, worker: Worker, back: () -> Unit) {
 private data class Card(val page: Int, val turn: Int, val id: Int)
 
 /** The page editor: turn, delete and move pages, then save a new PDF (the open file is never changed). */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun PagesScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
     val cards = remember(doc) { mutableStateListOf<Card>().apply { addAll((1..doc.pages).map { Card(it, 0, it) }) } }
@@ -214,7 +223,7 @@ fun PagesScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
     }
     Column(Modifier.fillMaxSize()) {
         TopRow(tr("Pages: {name}", "name" to doc.name), guardBack(cards.toList() != (1..doc.pages).map { Card(it, 0, it) } && saved == null, back))
-        Text(if (chosen.isEmpty()) tr("Tap a page to choose it.") else tr("{n} chosen", "n" to chosen.size),
+        Text(if (chosen.isEmpty()) tr("Tap a page to choose it.") else plural(chosen.size, "1 chosen", "{n} chosen"),
             Modifier.padding(horizontal = 16.dp).testTag("chosenCount"))
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             val any = chosen.isNotEmpty()
@@ -248,9 +257,34 @@ fun PagesScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
             Button(onClick = {
                 val picks = cards.map { PagePick(0u, it.page.toUInt(), it.turn.toLong()) }
                 worker.run({ arrange(listOf(PdfInput(doc.bytes, doc.password)), picks) }) { bytes ->
-                    host.save(nameWith(doc.name, tr("Edit pages").lowercase()), bytes) { saved = it }
+                    host.save(nameWith(doc.name, tr("edited")), bytes) { saved = it }
                 }
             }, modifier = Modifier.testTag("make")) { Text(tr("Save as PDF")) }
+        }
+        val order = cards.toList()
+        val one = order.indexOfFirst { it.id == chosen.singleOrNull() }
+        androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // only the chosen pages, in the order shown, as a new PDF
+            OutlinedButton(onClick = {
+                val picks = order.filter { it.id in chosen }.map { PagePick(0u, it.page.toUInt(), it.turn.toLong()) }
+                worker.run({ arrange(listOf(PdfInput(doc.bytes, doc.password)), picks) }) { bytes ->
+                    host.save(nameWith(doc.name, tr("chosen pages")), bytes) { saved = it }
+                }
+            }, enabled = chosen.isNotEmpty(), modifier = Modifier.testTag("keepChosen")) { Text(tr("Save chosen pages as a new PDF")) }
+            // two PDFs: up to the chosen page, and the rest
+            OutlinedButton(onClick = {
+                val picks = order.map { PagePick(0u, it.page.toUInt(), it.turn.toLong()) }
+                worker.run({
+                    val inputs = listOf(PdfInput(doc.bytes, doc.password))
+                    arrange(inputs, picks.take(one + 1)) to arrange(inputs, picks.drop(one + 1))
+                }) { (first, rest) ->
+                    host.save(nameWith(doc.name, tr("part {n}", "n" to 1)), first) { a ->
+                        if (a == null) return@save
+                        host.save(nameWith(doc.name, tr("part {n}", "n" to 2)), rest) { saved = it ?: a }
+                    }
+                }
+            }, enabled = one in 0 until order.size - 1, modifier = Modifier.testTag("splitAfter")) { Text(tr("Split after this page")) }
         }
         SavedRow(host, saved)
     }

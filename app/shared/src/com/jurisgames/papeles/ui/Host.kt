@@ -21,8 +21,14 @@ interface Host {
     /** A new photo from the camera (scanner); where there is none, choosing photos. */
     fun takePhoto(done: (List<Picked>) -> Unit) = pickPictures(done)
 
+    /** Photos the camera brought back after Android closed the app meanwhile (taken once; Android only). */
+    fun waitingPhotos(): List<Picked> = emptyList()
+
     /** Saves `bytes` where the person chooses, `suggested` as the starting name; calls back with what was saved. */
     fun save(suggested: String, bytes: ByteArray, done: (Picked?) -> Unit)
+
+    /** The folder a saved file went to, in the person's words ("Download"), when it can be told; else null. */
+    fun folderOf(file: Picked): String? = null
 
     /** A file from the recent list, if it can still be read. */
     fun reopen(name: String, key: String): Picked?

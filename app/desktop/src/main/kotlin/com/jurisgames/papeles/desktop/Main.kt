@@ -78,6 +78,8 @@ class DesktopHost(private val owner: () -> Frame?) : Host {
 
     override fun reopen(name: String, key: String): Picked? = File(key).takeIf { it.isFile }?.let(::picked)
 
+    override fun folderOf(file: Picked): String? = File(file.key).parentFile?.path
+
     override fun share(file: Picked) {
         runCatching { java.awt.Desktop.getDesktop().open(File(file.key)) }
     }

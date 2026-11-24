@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.jurisgames.papeles.ui
 
 import androidx.compose.foundation.Canvas
@@ -152,9 +154,9 @@ fun SignScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         TopRow(tr("Sign: {name}", "name" to doc.name), guardBack(placed.isNotEmpty() && saved == null, back))
-        Text(if (placed.isEmpty()) tr("Tap the page where your signature goes.") else tr("{n} placed. Tap again to add another.", "n" to placed.size),
+        Text(if (placed.isEmpty()) tr("Tap the page where your signature goes.") else plural(placed.size, "1 placed. Tap again to add another.", "{n} placed. Tap again to add another."),
             Modifier.padding(horizontal = 16.dp).testTag("signHint"))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) { // U-P4: wraps on a small phone or a long language instead of breaking words letter by letter
             TextButton(onClick = { drawing = true }, modifier = Modifier.testTag("redraw")) { Text(tr("Draw a new signature")) }
             TextButton(onClick = { placed.removeLastOrNull(); saved = null }, enabled = placed.isNotEmpty(), modifier = Modifier.testTag("undoPlace")) { Text(tr("Undo")) }
             TextButton(onClick = { resizeLast(false) }, enabled = placed.isNotEmpty(), modifier = Modifier.testTag("smaller")) { Text(tr("Smaller")) }

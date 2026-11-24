@@ -34,6 +34,9 @@ import java.nio.ByteBuffer
  * Android: files come and go through the system's file picker (no storage permission). A picked file's read access
  * is kept (persistable permission) so the recent list can open it again.
  */
+/** How many files handed in by other apps are kept as copies (for the Recent list); older copies are deleted. */
+private const val KEPT = 10
+
 class MainActivity : ComponentActivity(), Host {
     override val appFiles: File get() = filesDir
 
@@ -57,6 +60,9 @@ class MainActivity : ComponentActivity(), Host {
     // the scanner's camera: the system camera app writes the photo to a file of ours, read once and deleted
     private var onPhoto: ((List<Picked>) -> Unit)? = null
     private var photoFile: java.io.File? = null
+    // a photo that came back after Android closed the app while the camera was open (rule 171, U-P1): the scanner,
+    // brought back by PapelesApp, takes it
+    private val waiting = mutableListOf<Picked>()
     private val shoot = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         val f = photoFile
         val done = onPhoto
@@ -64,17 +70,29 @@ class MainActivity : ComponentActivity(), Host {
         onPhoto = null
         val bytes = if (ok && f != null && f.length() > 0) runCatching { f.readBytes() }.getOrNull() else null
         f?.delete()
-        done?.invoke(if (bytes == null) emptyList() else listOf(Picked("photo.jpg", "photo:" + System.currentTimeMillis()) { bytes }))
+        val got = if (bytes == null) emptyList() else listOf(Picked("photo.jpg", "photo:" + System.currentTimeMillis()) { bytes })
+        if (done != null) done(got) else waiting.addAll(got)
     }
 
+    override fun waitingPhotos(): List<Picked> = waiting.toList().also { waiting.clear() }
+
+    /** The bytes waiting for the "Save as" picker, also on disk: Android may close the app while the picker is open. */
+    private val pendingFile get() = File(filesDir, "pending-save.pdf")
+
     private val create = registerForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val bytes = pendingSave
+        // after Android closed the app while the picker was open, the bytes come from disk and nobody waits for the
+        // answer: say it here (U-P1: the file was left empty, 0 bytes, and nothing was said)
+        val bytes = pendingSave ?: pendingFile.takeIf { it.exists() }?.let { runCatching { it.readBytes() }.getOrNull() }
         pendingSave = null
+        pendingFile.delete()
         val done = onSaved
         onSaved = null
-        if (uri == null || bytes == null) { done?.invoke(null); return@registerForActivityResult }
-        val ok = runCatching { contentResolver.openOutputStream(uri, "wt")!!.use { it.write(bytes) } }.isSuccess
-        done?.invoke(if (ok) picked(uri) else null)
+        if (uri == null) { done?.invoke(null); return@registerForActivityResult }
+        val ok = bytes != null && runCatching { contentResolver.openOutputStream(uri, "wt")!!.use { it.write(bytes) } }.isSuccess
+        if (!ok) runCatching { android.provider.DocumentsContract.deleteDocument(contentResolver, uri) } // never an empty file
+        val got = if (ok) picked(uri) else null
+        if (done != null) done(got)
+        else android.widget.Toast.makeText(this, if (got != null) tr("Saved: {name}", "name" to got.name) else tr("Nothing was saved. Try again."), android.widget.Toast.LENGTH_LONG).show()
     }
 
     private fun deliver(to: ((List<Picked>) -> Unit)?, uris: List<Uri>) {
@@ -118,9 +136,24 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun save(suggested: String, bytes: ByteArray, done: (Picked?) -> Unit) {
         pendingSave = bytes
+        runCatching { pendingFile.writeBytes(bytes) }
         onSaved = done
         create.launch(suggested)
     }
+
+    /**
+     * The folder a "Save as" went to, from the document's id where the provider says it ("primary:Download/x.pdf" ->
+     * "Download"); the Downloads provider -> "Download". Other providers (Drive, ...): null, the row says only the name.
+     */
+    override fun folderOf(file: Picked): String? = runCatching {
+        val uri = Uri.parse(file.key)
+        when (uri.authority) {
+            "com.android.providers.downloads.documents" -> "Download"
+            "com.android.externalstorage.documents" ->
+                android.provider.DocumentsContract.getDocumentId(uri).substringAfter(':').substringBeforeLast('/', "").ifEmpty { null }
+            else -> null
+        }
+    }.getOrNull()
 
     override fun reopen(name: String, key: String): Picked? {
         val uri = Uri.parse(key)
@@ -130,7 +163,10 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     override fun share(file: Picked) {
-        val send = Intent(Intent.ACTION_SEND).setType("application/pdf").putExtra(Intent.EXTRA_STREAM, Uri.parse(file.key))
+        val k = Uri.parse(file.key)
+        // our own copy of a file another app handed in goes out through the FileProvider (a file:// link may not leave)
+        val out = if (k.scheme == "file") runCatching { androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", File(k.path!!)) }.getOrNull() ?: return else k
+        val send = Intent(Intent.ACTION_SEND).setType("application/pdf").putExtra(Intent.EXTRA_STREAM, out)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         runCatching { startActivity(Intent.createChooser(send, tr("Share"))) }
     }
@@ -143,11 +179,46 @@ class MainActivity : ComponentActivity(), Host {
 
     private fun take(intent: Intent?) {
         val uri = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data ?: return
-        incoming = picked(uri)
+        incoming = kept(uri)
+    }
+
+    /**
+     * A file handed in by another app ("Open with" from WhatsApp, Gmail, Downloads): its read permission ends with
+     * that visit, so the Recent list couldn't open it again and said "no longer there" (U-P5). A lasting permission
+     * when the sender offers one; else a copy of ours (the latest [KEPT] only), opened from there.
+     */
+    private fun kept(uri: Uri): Picked {
+        if (runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }.isSuccess) return picked(uri)
+        val name = nameOf(uri)
+        val dir = File(filesDir, "opened").apply { mkdirs() }
+        val copy = File(dir, "${System.currentTimeMillis()}-" + name.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(80))
+        // copied on first read (the worker's thread, not the screen's); a failed copy throws and open() says why
+        return Picked(name, Uri.fromFile(copy).toString()) {
+            if (!copy.exists()) {
+                runCatching { contentResolver.openInputStream(uri)!!.use { i -> copy.outputStream().use { i.copyTo(it) } } }
+                    .onFailure { copy.delete(); throw it }
+                dir.listFiles()?.sortedByDescending { it.name.substringBefore('-').toLongOrNull() ?: 0L }?.drop(KEPT)?.forEach { it.delete() }
+            }
+            copy.readBytes()
+        }
+    }
+
+    // APP-RULES 216: the activity keeps running through rotation and dark mode (configChanges in the manifest), so the
+    // bars' colours are set again here instead of by a fresh start
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        enableEdgeToEdge()
+    }
+
+    // where the camera writes the photo, kept in saved state: the result may reach a recreated activity (U-P1)
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        photoFile?.let { outState.putString("photo", it.path) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        savedInstanceState?.getString("photo")?.let { photoFile = File(it) }
         enableEdgeToEdge()
         // A missing engine shows on first open as a plain message (PpException.NoEngine); page work still runs.
         AppInfo.version = "1.0.0 android"

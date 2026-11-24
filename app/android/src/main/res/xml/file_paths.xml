@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The scanner's camera writes each photo here (the app's cache), read once and deleted. Nothing else is shared. -->
+<!-- The scanner's camera writes each photo here (the app's cache), read once and deleted; copies of files other apps
+     handed in (MainActivity.kept) can be shared on. Nothing else is shared. -->
 <paths>
     <cache-path name="camera" path="camera/" />
+    <files-path name="opened" path="opened/" />
 </paths>

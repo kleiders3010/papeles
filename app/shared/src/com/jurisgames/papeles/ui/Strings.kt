@@ -15,6 +15,9 @@ object Lang {
 
 fun tr(en: String): String = if (Lang.spanish) ES[en] ?: en else en
 
+/** A count in words that read right at 1 (APP-RULES 217): "1 found", "{n} found"; Spanish "1 encontrado". */
+fun plural(n: Int, one: String, many: String): String = if (n == 1) tr(one) else tr(many, "n" to n)
+
 fun tr(en: String, vararg args: Pair<String, Any?>): String {
     var s = tr(en)
     for ((k, v) in args) s = s.replace("{$k}", v.toString())
@@ -41,7 +44,7 @@ fun sizeLabel(bytes: Long): String = when {
 val ES: Map<String, String> = mapOf(
     "Papeles" to "Papeles",
     "Open a PDF" to "Abrir un PDF",
-    "Join PDFs" to "Unir PDFs",
+    "Join PDFs" to "Unir PDFs", "joined" to "unido", "smaller" to "más chico", "edited" to "editado", "Scan {date}" to "Escaneo {date}",
     "Pictures to PDF" to "Fotos a PDF",
     "Scan" to "Escanear", "Take a photo" to "Sacar una foto", "Choose photos" to "Elegir fotos",
     "Take a photo of each page, or choose photos. The pages are straightened and cleaned on this device." to
@@ -49,7 +52,8 @@ val ES: Map<String, String> = mapOf(
     "Drag the corners to the paper's edges." to "Arrastrá las esquinas a los bordes del papel.",
     "Document" to "Documento", "Grey" to "Gris", "Colour" to "Color", "Whole photo" to "Foto entera", "The photo" to "La foto",
     "Make smaller" to "Achicar",
-    "Pages" to "Páginas",
+    "Sign a PDF" to "Firmar un PDF", "Fill in a form" to "Completar un formulario", "Mark up a PDF" to "Marcar un PDF",
+    "This PDF has no fields to fill: tap where your text goes." to "Este PDF no tiene campos para completar: tocá donde va tu texto.",
     "Recent" to "Recientes",
     "Files you open show up here." to "Los archivos que abras aparecen acá.",
     "Remove from the list" to "Sacar de la lista",
@@ -66,12 +70,13 @@ val ES: Map<String, String> = mapOf(
         "Este PDF tiene firma digital. Una copia completada ya no prueba quién lo firmó. El archivo abierto no cambia.",
     "Save a filled copy?" to "¿Guardar una copia completada?", "Save the copy" to "Guardar la copia",
     "Save filled copy" to "Guardar copia completada", "Nothing changed yet" to "Todavía no cambiaste nada",
-    "{n} changed" to "{n} cambiados", "Or type it" to "O escribilo", "filled" to "completado",
+    "{n} changed" to "{n} cambiados", "1 changed" to "1 cambiado", "Or type it" to "O escribilo", "filled" to "completado",
     "A digital signature: it can't be filled here." to "Una firma digital: no se puede completar acá.",
     "This field can't be changed." to "Este campo no se puede cambiar.",
     "Sign" to "Firmar", "Sign: {name}" to "Firmar: {name}", "signed" to "firmado",
     "Tap the page where your signature goes." to "Tocá la página donde va tu firma.",
     "{n} placed. Tap again to add another." to "{n} puestas. Tocá de nuevo para agregar otra.",
+    "1 placed. Tap again to add another." to "1 puesta. Tocá de nuevo para agregar otra.",
     "Draw a new signature" to "Dibujar una firma nueva", "Undo" to "Deshacer", "Smaller" to "Más chica", "Bigger" to "Más grande",
     "Save signed copy" to "Guardar copia firmada",
     "This is a picture of your signature, as on paper; it is not a digital signature." to
@@ -83,7 +88,7 @@ val ES: Map<String, String> = mapOf(
     "Tap where the text goes." to "Tocá donde va el texto.", "Drag over what to highlight." to "Arrastrá sobre lo que querés resaltar.",
     "Write or draw with your finger or the mouse." to "Escribí o dibujá con el dedo o el mouse.",
     "Save marked copy" to "Guardar copia marcada", "Add text" to "Agregar texto", "Add" to "Agregar", "{n} points" to "{n} puntos",
-    "{n} found" to "{n} encontrados",
+    "{n} found" to "{n} encontrados", "1 found" to "1 encontrado",
     "Not found" to "No se encontró",
     "Page {n} of {total}" to "Página {n} de {total}",
     "Go to page {n}" to "Ir a la página {n}",
@@ -109,7 +114,7 @@ val ES: Map<String, String> = mapOf(
     "Remove" to "Quitar",
     "Save as PDF" to "Guardar como PDF",
     "Working…" to "Trabajando…",
-    "Saved: {name}" to "Guardado: {name}",
+    "Saved: {name}" to "Guardado: {name}", "Saved in {folder}: {name}" to "Guardado en {folder}: {name}", "Nothing was saved. Try again." to "No se guardó nada. Probá de nuevo.",
     "Share" to "Compartir",
     "Choose the PDFs to join, in order." to "Elegí los PDFs que querés unir, en orden.",
     "Add at least one more PDF to join." to "Agregá al menos un PDF más para unirlos.",
@@ -124,7 +129,7 @@ val ES: Map<String, String> = mapOf(
     "Choose a PDF" to "Elegir un PDF",
     "For screens" to "Para pantallas",
     "For printing" to "Para imprimir",
-    "Light touch" to "Apenas",
+    "Light touch" to "Un poco más chico",
     "Smallest; pictures look fine on a phone or computer." to "El más chico; las fotos se ven bien en el celular o la compu.",
     "Pictures stay sharp enough to print at home." to "Las fotos quedan bien para imprimir en casa.",
     "Barely changes how pictures look." to "Casi no cambia cómo se ven las fotos.",
@@ -137,9 +142,9 @@ val ES: Map<String, String> = mapOf(
     "Delete page" to "Borrar página",
     "Pages: {name}" to "Páginas: {name}",
     "Tap a page to choose it." to "Tocá una página para elegirla.",
-    "{n} chosen" to "{n} elegidas",
-    "Keep only these" to "Dejar solo estas",
-    "Split here" to "Separar acá",
+    "{n} chosen" to "{n} elegidas", "1 chosen" to "1 elegida",
+    "Save chosen pages as a new PDF" to "Guardar las páginas elegidas como PDF nuevo", "chosen pages" to "páginas elegidas",
+    "Split after this page" to "Separar después de esta página", "part {n}" to "parte {n}",
     "Edit pages" to "Editar páginas",
     "Appearance" to "Apariencia",
     "Same as the system" to "Igual que el sistema",

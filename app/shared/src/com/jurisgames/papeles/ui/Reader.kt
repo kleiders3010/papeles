@@ -31,6 +31,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -82,6 +84,7 @@ private val FIT_MAX = 1000.dp
 /** Most search hits gathered at once. */
 private const val MAX_HITS = 500u
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages: () -> Unit, fill: () -> Unit = {}, sign: () -> Unit = {}, mark: () -> Unit = {}) {
     // Fill shows only for a PDF with fields to fill (read once, off the main thread)
@@ -92,6 +95,7 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
     val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var searching by remember { mutableStateOf(false) }
+    var more by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var hits by remember { mutableStateOf<List<Hit>?>(null) }
     var at by remember { mutableStateOf(0) }
@@ -115,17 +119,25 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopRow(doc.name, back) {
+        TopRow(doc.name, if (searching) ({ searching = false; hits = null; query = "" }) else back) { // U-P22: Back closes the search first
             IconButton(onClick = { searching = !searching; if (!searching) { hits = null; query = "" } }, modifier = Modifier.testTag("search")) {
-                Icon(Ic.Search, tr("Search in this PDF"))
+                if (searching) Icon(Ic.Close, tr("Close search")) else Icon(Ic.Search, tr("Search in this PDF"))
             }
-            IconButton(onClick = { zoomBy(false) }, enabled = zoom > ZOOMS.first() + 0.01f, modifier = Modifier.testTag("zoomOut")) { Icon(Ic.ZoomOut, tr("Zoom out")) }
-            Text("${(zoom * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("zoomLevel"))
-            IconButton(onClick = { zoomBy(true) }, enabled = zoom < ZOOMS.last() - 0.01f, modifier = Modifier.testTag("zoomIn")) { Icon(Ic.ZoomIn, tr("Zoom in")) }
-            if (hasForm) IconButton(onClick = fill, modifier = Modifier.testTag("fill")) { Icon(Ic.Fill, tr("Fill in the form")) }
-            IconButton(onClick = sign, modifier = Modifier.testTag("sign")) { Icon(Ic.Sign, tr("Sign")) }
-            IconButton(onClick = mark, modifier = Modifier.testTag("mark")) { Icon(Ic.Mark, tr("Mark up")) }
-            IconButton(onClick = editPages, modifier = Modifier.testTag("editPages")) { Icon(Ic.Pages, tr("Edit pages")) }
+            Box {
+                IconButton(onClick = { more = true }, modifier = Modifier.testTag("more")) { Icon(Ic.More, tr("More")) }
+                DropdownMenu(more, { more = false }) {
+                    DropdownMenuItem(text = { Text(tr("Share")) }, onClick = { more = false; host.share(Picked(doc.name, doc.key) { doc.bytes }) },
+                        modifier = Modifier.testTag("shareDoc"))
+                }
+            }
+        }
+        // U-P2: what can be done with the file, in words (four word-less icons before; Fill only on forms)
+        androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp).testTag("tools"),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (hasForm) Tool(Ic.Fill, tr("Fill in the form"), "fill", fill)
+            Tool(Ic.Sign, tr("Sign"), "sign", sign)
+            Tool(Ic.Mark, tr("Mark up"), "mark", mark)
+            Tool(Ic.Pages, tr("Edit pages"), "editPages", editPages)
         }
         if (searching) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -136,7 +148,7 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
             }
             hits?.let { h ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (h.isEmpty()) tr("Not found") else tr("{n} found", "n" to (if (h.size >= MAX_HITS.toInt()) "${h.size}+" else h.size)) +
+                    Text(if (h.isEmpty()) tr("Not found") else (if (h.size >= MAX_HITS.toInt()) tr("{n} found", "n" to "${h.size}+") else plural(h.size, "1 found", "{n} found")) +
                         (if (h.isEmpty()) "" else " · ${at + 1}/${h.size}"), Modifier.weight(1f).testTag("hitCount"))
                     IconButton(onClick = { show(at - 1) }, enabled = h.isNotEmpty(), modifier = Modifier.testTag("hitPrev")) { Icon(Ic.Up, tr("Previous")) }
                     IconButton(onClick = { show(at + 1) }, enabled = h.isNotEmpty(), modifier = Modifier.testTag("hitNext")) { Icon(Ic.Down, tr("Next")) }
@@ -184,8 +196,23 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
                 }
             }
         }
-        Text(tr("Page {n} of {total}", "n" to first, "total" to doc.pages), style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.align(Alignment.CenterHorizontally).padding(6.dp).testTag("pageOf"))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("Page {n} of {total}", "n" to first, "total" to doc.pages), style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.weight(1f).padding(start = 12.dp).testTag("pageOf"))
+            IconButton(onClick = { zoomBy(false) }, enabled = zoom > ZOOMS.first() + 0.01f, modifier = Modifier.testTag("zoomOut")) { Icon(Ic.ZoomOut, tr("Zoom out")) }
+            Text("${(zoom * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("zoomLevel"))
+            IconButton(onClick = { zoomBy(true) }, enabled = zoom < ZOOMS.last() - 0.01f, modifier = Modifier.testTag("zoomIn")) { Icon(Ic.ZoomIn, tr("Zoom in")) }
+        }
+    }
+}
+
+/** A tool in the reader's row: its icon and its name (U-P2). */
+@Composable
+private fun Tool(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tag: String, onClick: () -> Unit) {
+    androidx.compose.material3.OutlinedButton(onClick = onClick, modifier = Modifier.testTag(tag),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
+        Icon(icon, null, Modifier.padding(end = 6.dp))
+        Text(label, maxLines = 1)
     }
 }
 

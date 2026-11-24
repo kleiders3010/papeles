@@ -201,6 +201,7 @@ class PhoneShotsTest {
         mainClock.advanceTimeBy(1_500)
         shot("3-fill")
         onNodeWithTag("back").performClick()
+        onNodeWithTag("leaveAnyway").performClick() // unsaved work: Back asks first (APP-RULES 203)
 
         onNodeWithTag("sign").performClick()
         waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("signPage-1")).fetchSemanticsNodes().isNotEmpty() }
@@ -212,6 +213,7 @@ class PhoneShotsTest {
         mainClock.advanceTimeBy(1_000)
         shot("4-sign")
         onNodeWithTag("back").performClick()
+        onNodeWithTag("leaveAnyway").performClick() // unsaved work: Back asks first (APP-RULES 203)
 
         onNodeWithTag("mark").performClick()
         onNodeWithTag("toolHighlight").performClick()
@@ -226,6 +228,7 @@ class PhoneShotsTest {
         mainClock.advanceTimeBy(1_000)
         shot("5-mark")
         onNodeWithTag("back").performClick()
+        onNodeWithTag("leaveAnyway").performClick() // unsaved work: Back asks first (APP-RULES 203)
         onNodeWithTag("back").performClick()
 
         onNodeWithTag("scan").performClick()

@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.jurisgames.papeles.ui
 
 import androidx.compose.foundation.Canvas
@@ -120,7 +122,8 @@ fun MarkScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopRow(tr("Mark: {name}", "name" to doc.name), guardBack(marks.isNotEmpty() && saved == null, back))
+        val leave = guardBack(marks.isNotEmpty() && saved == null, back)
+        TopRow(tr("Mark: {name}", "name" to doc.name), if (typing != null) ({ typing = null }) else leave) // U-P22: Back closes the text bar first
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             for ((t, label) in listOf(MarkTool.Text to tr("Text"), MarkTool.Highlight to tr("Highlight"), MarkTool.Pen to tr("Pen"))) {
                 FilterChip(selected = tool == t, onClick = { tool = t }, label = { Text(label) },
@@ -165,13 +168,12 @@ private fun TextBar(size: Float, onSize: (Float) -> Unit, onCancel: () -> Unit, 
     var text by remember { mutableStateOf("") }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         OutlinedTextField(text, { text = it.take(2000) }, Modifier.fillMaxWidth().testTag("markText"), label = { Text(tr("Add text")) }, minLines = 2)
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth()) { // U-P4: wraps instead of breaking words
             TextButton(onClick = { TEXT_SIZES.lastOrNull { it < size }?.let(onSize) }, enabled = size > TEXT_SIZES.first(),
                 modifier = Modifier.testTag("textSmaller")) { Text(tr("Smaller")) }
-            Text(tr("{n} points", "n" to size.toInt()), Modifier.testTag("textSize"))
+            Text(tr("{n} points", "n" to size.toInt()), Modifier.align(Alignment.CenterVertically).testTag("textSize")) // n>=2: pinned: TEXT_SIZES starts at 8
             TextButton(onClick = { TEXT_SIZES.firstOrNull { it > size }?.let(onSize) }, enabled = size < TEXT_SIZES.last(),
                 modifier = Modifier.testTag("textBigger")) { Text(tr("Bigger")) }
-            Box(Modifier.weight(1f))
             TextButton(onClick = onCancel, modifier = Modifier.testTag("cancelText")) { Text(tr("Cancel")) }
             Button(onClick = { onDone(text) }, enabled = text.isNotBlank(), modifier = Modifier.testTag("addText")) { Text(tr("Add")) }
         }

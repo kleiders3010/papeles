@@ -121,7 +121,7 @@ fun FillScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
             Button(onClick = { if (signed) warn = true else save() }, enabled = n > 0 && !worker.busy, modifier = Modifier.testTag("make")) {
                 Text(tr("Save filled copy"))
             }
-            Text(if (n == 0) tr("Nothing changed yet") else tr("{n} changed", "n" to n), Modifier.padding(start = 12.dp).testTag("changedCount"))
+            Text(if (n == 0) tr("Nothing changed yet") else plural(n, "1 changed", "{n} changed"), Modifier.padding(start = 12.dp).testTag("changedCount"))
         }
         SavedRow(host, saved)
     }

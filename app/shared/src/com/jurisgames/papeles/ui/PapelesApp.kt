@@ -55,6 +55,8 @@ import androidx.compose.ui.unit.dp
 import com.jurisgames.papeles.core.PdfFile
 import com.jurisgames.papeles.core.PpException
 import com.jurisgames.papeles.core.openPdf
+import com.jurisgames.papeles.core.formFields
+import com.jurisgames.papeles.core.PdfInput
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -127,23 +129,40 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
     var recent by remember { mutableStateOf(Recent.load(host.appFiles)) }
     var locked by remember { mutableStateOf<Picked?>(null) }
     var wrongPassword by remember { mutableStateOf(false) }
+    // the tool a home entry goes into once its file opens ("sign", "fill", "mark", "pages"; "" = the reader)
+    var into by remember { mutableStateOf("") }
 
     fun close(s: Screen) {
-        (s as? Screen.Reader)?.doc?.file?.close()
+        // every screen holding a file: Open on a tool's saved row leaves it for the new one
+        when (s) {
+            is Screen.Reader -> s.doc; is Screen.Pages -> s.doc; is Screen.Fill -> s.doc; is Screen.Sign -> s.doc; is Screen.Mark -> s.doc
+            else -> null
+        }?.file?.close()
     }
 
     fun open(p: Picked, password: String? = null) {
+        val tool = into
         worker.run({
             val bytes = p.read()
-            runCatching { openPdf(bytes, password) }.map { OpenDoc(p.name, p.key, bytes, password, it) }
+            runCatching { openPdf(bytes, password) }.map { OpenDoc(p.name, p.key, bytes, password, it) }.map { doc ->
+                // "Fill in a form" on a paper with no fields to fill: typing on it (Mark's text) instead
+                doc to (tool == "fill" && runCatching { fillable(formFields(PdfInput(bytes, password))) }.getOrDefault(false))
+            }
         }) { r ->
-            r.onSuccess { doc ->
+            r.onSuccess { (doc, form) ->
                 locked = null
+                into = ""
                 recent = Recent.add(host.appFiles, p.name, p.key)
                 close(screen)
-                screen = Screen.Reader(doc)
+                screen = when (tool) {
+                    "sign" -> Screen.Sign(doc)
+                    "mark" -> Screen.Mark(doc)
+                    "pages" -> Screen.Pages(doc)
+                    "fill" -> if (form) Screen.Fill(doc) else Screen.Mark(doc).also { worker.say(tr("This PDF has no fields to fill: tap where your text goes.")) }
+                    else -> Screen.Reader(doc)
+                }
             }.onFailure { e ->
-                if (e is PpException.Password) { wrongPassword = password != null; locked = p } else worker.say(userError(e))
+                if (e is PpException.Password) { wrongPassword = password != null; locked = p } else { into = ""; worker.say(userError(e)) }
             }
         }
     }
@@ -152,11 +171,42 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
         incoming?.let { open(it); onIncomingDone() }
     }
 
+    // Rule 171 (U-P1): which screen was open, and the open file's name and key (never its password), survive Android
+    // closing the app while the camera or a file picker is open. A file's screen comes back as its reader.
+    var savedScreen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    val restore = remember { savedScreen }
+    LaunchedEffect(Unit) {
+        when {
+            incoming != null || restore.isEmpty() -> {}
+            restore == "scan" -> screen = Screen.Scan
+            restore == "join" -> screen = Screen.Join
+            restore == "pictures" -> screen = Screen.Pictures
+            restore == "shrink" -> screen = Screen.Shrink
+            restore.startsWith("doc\n") -> restore.split("\n", limit = 3).takeIf { it.size == 3 }?.let { (_, name, key) -> host.reopen(name, key)?.let { open(it) } }
+        }
+    }
+    LaunchedEffect(screen) {
+        savedScreen = when (val s = screen) {
+            Screen.Home -> ""
+            Screen.Scan -> "scan"
+            Screen.Join -> "join"
+            Screen.Pictures -> "pictures"
+            Screen.Shrink -> "shrink"
+            is Screen.Reader -> "doc\n${s.doc.name}\n${s.doc.key}"
+            is Screen.Pages -> "doc\n${s.doc.name}\n${s.doc.key}"
+            is Screen.Fill -> "doc\n${s.doc.name}\n${s.doc.key}"
+            is Screen.Sign -> "doc\n${s.doc.name}\n${s.doc.key}"
+            is Screen.Mark -> "doc\n${s.doc.name}\n${s.doc.key}"
+        }
+    }
+
+    androidx.compose.runtime.CompositionLocalProvider(LocalOpen provides { p: Picked -> open(p) }) {
     Scaffold(snackbarHost = { SnackbarHost(snack) }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (val s = screen) {
                 Screen.Home -> Home(host, recent, worker, onTheme,
                     open = { open(it) },
+                    openInto = { tool -> host.pickPdfs(false) { it.firstOrNull()?.let { p -> into = tool; open(p) } } },
                     reopen = { r ->
                         val p = host.reopen(r.name, r.key)
                         if (p == null) { recent = Recent.remove(host.appFiles, r.key); worker.say(tr("This file is no longer there.")) } else open(p)
@@ -176,7 +226,8 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
             if (worker.busy) Busy(worker::cancel)
         }
     }
-    locked?.let { p -> PasswordDialog(p.name, wrongPassword, onOpen = { open(p, it) }, onClose = { locked = null; wrongPassword = false }) }
+    } // LocalOpen
+    locked?.let { p -> PasswordDialog(p.name, wrongPassword, onOpen = { open(p, it) }, onClose = { locked = null; wrongPassword = false; into = "" }) }
 }
 
 @Composable
@@ -228,7 +279,8 @@ fun TopRow(title: String, back: (() -> Unit)?, actions: @Composable () -> Unit =
 
 @Composable
 private fun Home(host: Host, recent: List<RecentFile>, worker: Worker, onTheme: (DarkMode) -> Unit,
-                 open: (Picked) -> Unit, reopen: (RecentFile) -> Unit, forget: (RecentFile) -> Unit, go: (Screen) -> Unit) {
+                 open: (Picked) -> Unit, reopen: (RecentFile) -> Unit, forget: (RecentFile) -> Unit, go: (Screen) -> Unit,
+                 openInto: (String) -> Unit = {}) {
     var settings by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
@@ -244,12 +296,16 @@ private fun Home(host: Host, recent: List<RecentFile>, worker: Worker, onTheme: 
         }
         LazyColumn(Modifier.fillMaxSize().testTag("home"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
-                Action(Ic.Search, tr("Open a PDF"), "open") { host.pickPdfs(false) { it.firstOrNull()?.let(open) } }
+                Action(Ic.Open, tr("Open a PDF"), "open") { host.pickPdfs(false) { it.firstOrNull()?.let(open) } }
             }
+            item { Action(Ic.Sign, tr("Sign a PDF"), "homeSign") { openInto("sign") } }
+            item { Action(Ic.Fill, tr("Fill in a form"), "homeFill") { openInto("fill") } }
+            item { Action(Ic.Mark, tr("Mark up a PDF"), "homeMark") { openInto("mark") } }
+            item { Action(Ic.Pages, tr("Edit pages"), "homePages") { openInto("pages") } }
             item { Action(Ic.Add, tr("Join PDFs"), "join") { go(Screen.Join) } }
             item { Action(Ic.Scan, tr("Scan"), "scan") { go(Screen.Scan) } }
             item { Action(Ic.Image, tr("Pictures to PDF"), "pictures") { go(Screen.Pictures) } }
-            item { Action(Ic.Down, tr("Make smaller"), "shrink") { go(Screen.Shrink) } }
+            item { Action(Ic.Shrink, tr("Make smaller"), "shrink") { go(Screen.Shrink) } }
             item {
                 Spacer(Modifier.height(8.dp))
                 Text(tr("Recent"), style = MaterialTheme.typography.titleMedium)

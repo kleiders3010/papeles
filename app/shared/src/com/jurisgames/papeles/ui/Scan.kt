@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.jurisgames.papeles.ui
 
 import androidx.compose.foundation.Canvas
@@ -26,6 +28,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -95,17 +98,20 @@ fun ScanScreen(host: Host, worker: Worker, back: () -> Unit) {
         }
     }
 
+    // a photo the camera brought back after Android closed the app (MainActivity keeps it; PapelesApp reopens Scan)
+    LaunchedEffect(Unit) { add(host.waitingPhotos()) }
+
     fun save() {
         val list = items.map { Triple(it.photo, it.corners.map { c -> PhotoPoint(c.x, c.y) }, it.look) }
         val p = paper
         worker.run({ picturesToPdf(list.map { (b, c, l) -> scanPage(b, c, l) }, p) }) { bytes ->
-            host.save(tr("Scan") + ".pdf", bytes) { saved = it }
+            host.save(scanName(), bytes) { saved = it }
         }
     }
 
     Column(Modifier.fillMaxSize()) {
         TopRow(tr("Scan"), guardBack(items.isNotEmpty() && saved == null, back))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) { // U-P4
             Button(onClick = { host.takePhoto { add(it) } }, enabled = !worker.busy, modifier = Modifier.testTag("takePhoto")) { Text(tr("Take a photo")) }
             OutlinedButton(onClick = { host.pickPictures { add(it) } }, enabled = !worker.busy, modifier = Modifier.testTag("add")) { Text(tr("Choose photos")) }
         }
@@ -120,14 +126,14 @@ fun ScanScreen(host: Host, worker: Worker, back: () -> Unit) {
                 val ratio = (cur.w / cur.h).takeIf { it.isFinite() && it > 0.05f } ?: 0.75f
                 Corners(cur, minOf(maxWidth, maxHeight * ratio), ratio)
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) { // U-P4: wraps on a small phone or a long language instead of breaking words letter by letter
                 for ((l, label) in listOf(ScanLook.DOCUMENT to tr("Document"), ScanLook.GREY to tr("Grey"), ScanLook.COLOUR to tr("Colour"))) {
                     FilterChip(selected = cur.look == l, onClick = { cur.look = l }, label = { Text(label) },
                         modifier = Modifier.padding(horizontal = 4.dp).testTag("look${l.name}"))
                 }
                 TextButton(onClick = { cur.whole() }, modifier = Modifier.testTag("wholePhoto")) { Text(tr("Whole photo")) }
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) { // U-P4: wraps on a small phone or a long language instead of breaking words letter by letter
                 TextButton(onClick = { items.add(at - 1, items.removeAt(at)); at--; saved = null }, enabled = at > 0, modifier = Modifier.testTag("earlier")) { Text(tr("Move up")) }
                 TextButton(onClick = { items.add(at + 1, items.removeAt(at)); at++; saved = null }, enabled = at < items.size - 1, modifier = Modifier.testTag("later")) { Text(tr("Move down")) }
                 TextButton(onClick = { items.removeAt(at); at = at.coerceAtMost(items.size - 1).coerceAtLeast(0); saved = null }, modifier = Modifier.testTag("removeScan")) { Text(tr("Remove")) }
@@ -199,3 +205,6 @@ private fun Corners(item: ScanItem, shown: androidx.compose.ui.unit.Dp, ratio: F
         }
     }
 }
+
+/** "Scan 2026-11-24.pdf" (U-P23: every scan was "Scan.pdf", in Spanish the verb "Escanear.pdf"); the date sorts. */
+fun scanName(today: java.time.LocalDate = java.time.LocalDate.now()): String = tr("Scan {date}", "date" to today) + ".pdf"
