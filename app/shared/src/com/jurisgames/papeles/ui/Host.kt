@@ -36,5 +36,12 @@ interface Host {
     /** Hands a saved file to another app (share sheet / the system's default app). */
     fun share(file: Picked)
 
+    /** U-P8: the system's print dialog for a PDF (Android PrintManager, desktop print); false where there is none. */
+    val canPrint: Boolean get() = false
+    fun print(file: Picked) {}
+
+    /** U-P8: the PDF in another app the person picks (Android "Open with"; desktop: the system's PDF app). */
+    fun openWith(file: Picked) = share(file)
+
     fun image(p: Picture): ImageBitmap
 }

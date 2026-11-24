@@ -5,6 +5,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -31,6 +35,16 @@ const val VERSION_CODE = 1uL
 
 /** A file on disk as the app sees it. */
 fun picked(f: File) = Picked(f.name, f.absolutePath) { f.readBytes() }
+
+/**
+ * U-P21: files handed to the window (command line, drag and drop): the first PDF opens; with no PDF, the photos start
+ * Pictures to PDF. Anything else is left alone.
+ */
+fun routeFiles(files: List<File>): Pair<Picked?, List<Picked>> {
+    val pdf = files.firstOrNull { it.isFile && it.extension.equals("pdf", ignoreCase = true) }
+    val pics = if (pdf != null) emptyList() else files.filter { it.isFile && it.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp") }
+    return pdf?.let(::picked) to pics.map(::picked)
+}
 
 /** Turns PDFium's RGBA rows into a Compose image. */
 fun skiaImage(p: Picture): ImageBitmap {
@@ -84,6 +98,13 @@ class DesktopHost(private val owner: () -> Frame?) : Host {
         runCatching { java.awt.Desktop.getDesktop().open(File(file.key)) }
     }
 
+    override val canPrint: Boolean
+        get() = runCatching { java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.PRINT) }.getOrDefault(false)
+
+    override fun print(file: Picked) {
+        runCatching { java.awt.Desktop.getDesktop().print(File(file.key)) }
+    }
+
     override fun image(p: Picture): ImageBitmap = skiaImage(p)
 }
 
@@ -108,9 +129,46 @@ fun main(args: Array<String>) {
         var frame: Frame? = null
         val host = remember { DesktopHost { frame } }
         var mode by remember { mutableStateOf(darkMode(host.appFiles)) }
-        Window(onCloseRequest = ::exitApplication, title = tr("Papeles"), state = rememberWindowState(width = 900.dp, height = 1000.dp)) {
+        // U-P21: "Open with" / double-click hands the file on the command line; it was ignored
+        val given = remember { routeFiles(args.filter { !it.startsWith("--") }.map(::File)) }
+        var incoming by remember { mutableStateOf(given.first) }
+        var pictures by remember { mutableStateOf(given.second) }
+        Window(onCloseRequest = ::exitApplication, title = tr("Papeles"), state = rememberWindowState(width = 900.dp, height = 1000.dp),
+            onKeyEvent = { e ->
+                // Ctrl+O opens a PDF, as in every desktop program
+                if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@Window false
+                val ctrl = e.isCtrlPressed || e.isMetaPressed
+                val K = androidx.compose.ui.input.key.Key
+                when {
+                    ctrl && e.key == K.O -> { host.pickPdfs(false) { it.firstOrNull()?.let { p -> incoming = p } }; true }
+                    // U-P21: the reader's keys
+                    ctrl && e.key == K.F -> com.jurisgames.papeles.ui.Keys.commands.tryEmit(com.jurisgames.papeles.ui.KeyCommand.Find)
+                    ctrl && (e.key == K.Equals || e.key == K.Plus || e.key == K.NumPadAdd) -> com.jurisgames.papeles.ui.Keys.commands.tryEmit(com.jurisgames.papeles.ui.KeyCommand.ZoomIn)
+                    ctrl && (e.key == K.Minus || e.key == K.NumPadSubtract) -> com.jurisgames.papeles.ui.Keys.commands.tryEmit(com.jurisgames.papeles.ui.KeyCommand.ZoomOut)
+                    e.key == K.PageDown -> com.jurisgames.papeles.ui.Keys.commands.tryEmit(com.jurisgames.papeles.ui.KeyCommand.NextPage)
+                    e.key == K.PageUp -> com.jurisgames.papeles.ui.Keys.commands.tryEmit(com.jurisgames.papeles.ui.KeyCommand.PrevPage)
+                    else -> false
+                }
+            }) {
             frame = window
-            AppTheme(mode) { PapelesApp(host) { mode = it } }
+            // U-P21: files dropped on the window
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                window.dropTarget = object : java.awt.dnd.DropTarget() {
+                    @Synchronized
+                    override fun drop(evt: java.awt.dnd.DropTargetDropEvent) {
+                        evt.acceptDrop(java.awt.dnd.DnDConstants.ACTION_COPY)
+                        val files = runCatching { evt.transferable.getTransferData(java.awt.datatransfer.DataFlavor.javaFileListFlavor) as List<*> }
+                            .getOrDefault(emptyList<Any>()).filterIsInstance<File>()
+                        val (pdf, pics) = routeFiles(files)
+                        if (pdf != null) incoming = pdf else if (pics.isNotEmpty()) pictures = pics
+                        evt.dropComplete(pdf != null || pics.isNotEmpty())
+                    }
+                }
+            }
+            AppTheme(mode) {
+                PapelesApp(host, incoming = incoming, onIncomingDone = { incoming = null }, pictures = pictures,
+                    onPicturesDone = { pictures = emptyList() }) { mode = it }
+            }
         }
     }
 }

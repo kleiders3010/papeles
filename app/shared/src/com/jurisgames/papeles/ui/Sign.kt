@@ -10,6 +10,8 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -152,6 +154,8 @@ fun SignScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
         }
     }
 
+    var zoom by remember(doc) { mutableStateOf(1f) }
+    val across = androidx.compose.foundation.rememberScrollState()
     Column(Modifier.fillMaxSize()) {
         TopRow(tr("Sign: {name}", "name" to doc.name), guardBack(placed.isNotEmpty() && saved == null, back))
         Text(if (placed.isEmpty()) tr("Tap the page where your signature goes.") else plural(placed.size, "1 placed. Tap again to add another.", "{n} placed. Tap again to add another."),
@@ -161,11 +165,18 @@ fun SignScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
             TextButton(onClick = { placed.removeLastOrNull(); saved = null }, enabled = placed.isNotEmpty(), modifier = Modifier.testTag("undoPlace")) { Text(tr("Undo")) }
             TextButton(onClick = { resizeLast(false) }, enabled = placed.isNotEmpty(), modifier = Modifier.testTag("smaller")) { Text(tr("Smaller")) }
             TextButton(onClick = { resizeLast(true) }, enabled = placed.isNotEmpty(), modifier = Modifier.testTag("bigger")) { Text(tr("Bigger")) }
+            // U-P15: zoom, to put a signature on a small line on a phone
+            androidx.compose.material3.IconButton(onClick = { zoom = ZOOMS.lastOrNull { it < zoom - 0.01f } ?: ZOOMS.first() }, enabled = zoom > ZOOMS.first() + 0.01f,
+                modifier = Modifier.testTag("signZoomOut")) { androidx.compose.material3.Icon(Ic.ZoomOut, tr("Zoom out")) }
+            androidx.compose.material3.IconButton(onClick = { zoom = ZOOMS.firstOrNull { it > zoom + 0.01f } ?: ZOOMS.last() }, enabled = zoom < ZOOMS.last() - 0.01f,
+                modifier = Modifier.testTag("signZoomIn")) { androidx.compose.material3.Icon(Ic.ZoomIn, tr("Zoom in")) }
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant)) {
-            val pageW = minOf(maxWidth - 16.dp, 1000.dp)
+            val pageW = minOf(maxWidth - 16.dp, 1000.dp) * zoom
             val px = with(androidx.compose.ui.platform.LocalDensity.current) { pageW.roundToPx() }.coerceIn(256, 2048)
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+            // zoomed: the pages are wider than the screen and move sideways too (a drag scrolls, a tap places)
+            val wide = if (zoom > 1.01f) Modifier.horizontalScroll(across).width(pageW + 16.dp) else Modifier.fillMaxWidth()
+            LazyColumn(Modifier.fillMaxHeight().then(wide), contentPadding = PaddingValues(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 items(doc.pages) { i ->
                     val n = i + 1
@@ -192,7 +203,7 @@ fun SignScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
 @Composable
 private fun SignPage(doc: OpenDoc, host: Host, n: Int, box: PageBox, shown: androidx.compose.ui.unit.Dp, px: Int, ink: Ink?,
                      here: List<Placed>, tap: (Float, Float) -> Unit) {
-    var img by remember(doc, n, px) { mutableStateOf<ImageBitmap?>(null) }
+    var img by remember(doc, n) { mutableStateOf<ImageBitmap?>(null) } // the old picture stays until the sharper one is ready (223)
     LaunchedEffect(doc, n, px) {
         img = withContext(Dispatchers.IO) { runCatching { host.image(doc.file.render(n.toUInt(), px)) }.getOrNull() }
     }
@@ -236,12 +247,15 @@ fun SignaturePad(onCancel: () -> Unit, onDone: (Ink) -> Unit) {
     var current by remember { mutableStateOf<List<Offset>>(emptyList()) }
     // where the pen went down: a stroke is only known once it has moved a little, and it starts here
     var downAt by remember { mutableStateOf(Offset.Zero) }
+    // U-P26: nearly the full width (it was about 280 x 180 dp); a tap outside closes it only while it is empty (rule 174)
     AlertDialog(
-        onDismissRequest = onCancel,
+        onDismissRequest = { if (lines.isEmpty()) onCancel() },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = lines.isEmpty(), usePlatformDefaultWidth = false),
         title = { Text(tr("Draw your signature")) },
         text = {
             Column {
-                Box(Modifier.fillMaxWidth().height(180.dp).background(Color.White).border(1.dp, MaterialTheme.colorScheme.outline)
+                Box(Modifier.fillMaxWidth().height(240.dp).background(Color.White).border(1.dp, MaterialTheme.colorScheme.outline)
                     .pointerInput(Unit) {
                         awaitEachGesture { downAt = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).position }
                     }
@@ -252,6 +266,10 @@ fun SignaturePad(onCancel: () -> Unit, onDone: (Ink) -> Unit) {
                             onDragEnd = { if (current.isNotEmpty()) lines += current; current = emptyList() },
                             onDragCancel = { current = emptyList() },
                         )
+                    }
+                    // U-P26: a tap is a dot (the dot of an i drew nothing)
+                    .pointerInput(Unit) {
+                        detectTapGestures { o -> lines += listOf(Offset(o.x / density, o.y / density), Offset(o.x / density + 0.01f, o.y / density)) }
                     }.testTag("pad")) {
                     Canvas(Modifier.fillMaxSize()) {
                         for (line in lines + listOf(current)) {

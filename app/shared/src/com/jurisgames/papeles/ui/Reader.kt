@@ -52,6 +52,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -104,11 +107,25 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
     var goTo by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var hits by remember { mutableStateOf<List<Hit>?>(null) }
+    var dark by remember { mutableStateOf(DarkPages.get(host.appFiles)) } // U-P30
     var at by remember { mutableStateOf(0) }
     val sizes = remember(doc) { HashMap<Int, PageBox>() }
     var zoom by remember(doc) { mutableStateOf(1f) }
     fun zoomBy(up: Boolean) {
         zoom = if (up) ZOOMS.firstOrNull { it > zoom + 0.01f } ?: ZOOMS.last() else ZOOMS.lastOrNull { it < zoom - 0.01f } ?: ZOOMS.first()
+    }
+
+    // U-P21: Ctrl+F, Page Up / Down and Ctrl+plus / minus from a computer's keyboard
+    LaunchedEffect(doc) {
+        Keys.commands.collect { c ->
+            when (c) {
+                KeyCommand.Find -> searching = true
+                KeyCommand.NextPage -> list.animateScrollToItem((list.firstVisibleItemIndex + 1).coerceAtMost(maxOf(0, doc.pages - 1)))
+                KeyCommand.PrevPage -> list.animateScrollToItem((list.firstVisibleItemIndex - 1).coerceAtLeast(0))
+                KeyCommand.ZoomIn -> zoomBy(true)
+                KeyCommand.ZoomOut -> zoomBy(false)
+            }
+        }
     }
 
     fun show(i: Int) {
@@ -134,6 +151,13 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
                 DropdownMenu(more, { more = false }) {
                     DropdownMenuItem(text = { Text(tr("Share")) }, onClick = { more = false; host.share(Picked(doc.name, doc.key) { doc.bytes }) },
                         modifier = Modifier.testTag("shareDoc"))
+                    DropdownMenuItem(text = { Text(if (dark) tr("Light pages") else tr("Dark pages")) },
+                        onClick = { more = false; dark = !dark; DarkPages.set(host.appFiles, dark) }, modifier = Modifier.testTag("darkPages"))
+                    // U-P8 / APP-RULE 222: Print and Open in another app next to Share
+                    if (host.canPrint) DropdownMenuItem(text = { Text(tr("Print")) }, onClick = { more = false; host.print(Picked(doc.name, doc.key) { doc.bytes }) },
+                        modifier = Modifier.testTag("printDoc"))
+                    DropdownMenuItem(text = { Text(tr("Open in another app")) }, onClick = { more = false; host.openWith(Picked(doc.name, doc.key) { doc.bytes }) },
+                        modifier = Modifier.testTag("openWith"))
                 }
             }
         }
@@ -180,7 +204,7 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
                         val n = i + 1
                         val box = sizes.getOrPut(n) { runCatching { doc.file.pageSize(n.toUInt()) }.getOrDefault(PageBox(595f, 842f)) }
                         val marks = hits?.filter { it.page.toInt() == n }.orEmpty()
-                        PageView(doc, host, n, box, pageW, bucket, marks, current?.takeIf { it.page.toInt() == n })
+                        PageView(doc, host, n, box, pageW, bucket, marks, current?.takeIf { it.page.toInt() == n }, dark)
                     }
                 }
             }
@@ -262,8 +286,15 @@ private fun PageThumb(doc: OpenDoc, host: Host, n: Int, box: PageBox, current: B
     }
 }
 
+/** U-P30: white paper becomes black, black ink white (offsets are 0-255) */
+private val INVERT = ColorFilter.colorMatrix(ColorMatrix(floatArrayOf(
+    -1f, 0f, 0f, 0f, 255f,
+    0f, -1f, 0f, 0f, 255f,
+    0f, 0f, -1f, 0f, 255f,
+    0f, 0f, 0f, 1f, 0f)))
+
 @Composable
-private fun PageView(doc: OpenDoc, host: Host, n: Int, box: PageBox, shown: Dp, width: Int, marks: List<Hit>, current: Hit?) {
+private fun PageView(doc: OpenDoc, host: Host, n: Int, box: PageBox, shown: Dp, width: Int, marks: List<Hit>, current: Hit?, dark: Boolean = false) {
     // U-P10: the picture is kept across a zoom step (not keyed on width) and stretched until the sharper one is ready;
     // keyed on width, each 256 px step dropped it and the page flashed white many times during one pinch
     var img by remember(doc, n) { mutableStateOf<ImageBitmap?>(null) }
@@ -271,14 +302,16 @@ private fun PageView(doc: OpenDoc, host: Host, n: Int, box: PageBox, shown: Dp, 
         img = withContext(Dispatchers.IO) { runCatching { host.image(doc.file.render(n.toUInt(), width)) }.getOrNull() }
     }
     val ratio = (box.width / box.height).takeIf { it.isFinite() && it > 0.05f && it < 20f } ?: 0.707f
-    Box(Modifier.width(shown).aspectRatio(ratio).background(Color.White)
+    Box(Modifier.width(shown).aspectRatio(ratio).background(if (dark) Color.Black else Color.White)
         .semantics { contentDescription = tr("Page {n} of {total}", "n" to n, "total" to doc.pages) }.testTag("page-$n")) {
-        img?.let { Image(it, null, Modifier.fillMaxSize()) }
+        img?.let { Image(it, null, Modifier.fillMaxSize(), colorFilter = if (dark) INVERT else null) }
         if (marks.isNotEmpty()) Canvas(Modifier.fillMaxSize()) {
             val s = size.width / box.width
             for (h in marks) for (a: Area in h.areas) {
                 val color = if (h === current) Color(0x99FF9800) else Color(0x66FFEB3B)
                 drawRect(color, Offset(a.x * s, a.y * s), Size(a.w * s, a.h * s))
+                // U-P32: the current hit is outlined too, not told apart by colour alone
+                if (h === current) drawRect(Color(0xFFD84315), Offset(a.x * s - 2f, a.y * s - 2f), Size(a.w * s + 4f, a.h * s + 4f), style = Stroke(3f))
             }
         }
     }

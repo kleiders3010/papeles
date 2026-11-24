@@ -6,6 +6,11 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
@@ -120,6 +125,11 @@ class FakeHost : Host {
     }
     override fun reopen(name: String, key: String): Picked? = files[name]?.let { Picked(name, key) { it } }
     override fun share(file: Picked) { shared += file.name }
+    val printed = mutableListOf<String>()
+    val openedWith = mutableListOf<String>()
+    override val canPrint = true
+    override fun print(file: Picked) { printed += file.name }
+    override fun openWith(file: Picked) { openedWith += file.name }
     override fun image(p: Picture): ImageBitmap = skiaImage(p)
 }
 
@@ -629,6 +639,246 @@ class AppFlowTest {
         onNodeWithTag("pwOpen").performClick()
         waitUntil(timeoutMillis = 10_000) { host.saved.isNotEmpty() }
         assertEquals(2, pages(host.saved.single().second)) // pinned: one page from each file
+    }
+
+    /** U-P8 / APP-RULE 222 guard: the open PDF can be printed and opened in another app from More (neither existed) */
+    @Test
+    fun the_open_pdf_prints_and_opens_in_another_app() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("lease.pdf", textPdf("page one")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("page-1")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("more").performClick()
+        onNodeWithTag("printDoc").performClick()
+        assertEquals(listOf("lease.pdf"), host.printed)
+        onNodeWithTag("more").performClick()
+        onNodeWithTag("openWith").performClick()
+        assertEquals(listOf("lease.pdf"), host.openedWith)
+    }
+
+    /** U-P30 guard: More has Dark pages, and the choice holds for the next PDF (pages were always bright white) */
+    @Test
+    fun dark_pages_stay_dark_for_the_next_pdf() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("night.pdf", textPdf("page one")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("page-1")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("more").performClick()
+        onNodeWithTag("darkPages").assertTextContains("Dark pages").performClick()
+        assertTrue(com.jurisgames.papeles.ui.DarkPages.get(host.appFiles))
+        onNodeWithTag("more").performClick()
+        onNodeWithTag("darkPages").assertTextContains("Light pages")
+    }
+
+    /** U-P25 guard: Settings says what the app is and links its source and privacy policy (only Appearance before) */
+    @Test
+    fun settings_say_what_the_app_is() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        onNodeWithTag("menu").performClick()
+        onNodeWithTag("settings").performClick()
+        onNodeWithTag("about").assertExists()
+        onNodeWithTag("sourceLink").assertExists()
+        onNodeWithTag("privacyLink").assertExists()
+    }
+
+    /** U-P26 guard: a single tap on the pad is a mark (the dot of an i drew nothing) */
+    @Test
+    fun a_tap_on_the_signature_pad_is_a_dot() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("letter.pdf", textPdf("Dear sir")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("sign")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("sign").performClick()
+        onNodeWithTag("useSignature").assertIsNotEnabled()
+        onNodeWithTag("pad").performTouchInput { click(center) }
+        onNodeWithTag("useSignature").assertIsEnabled()
+    }
+
+    /** U-P27 guard: a PDF from another app over unsaved work asks first (it replaced the screen and the work was lost) */
+    @Test
+    fun a_file_arriving_over_unsaved_work_asks_first() = runComposeUiTest {
+        val host = FakeHost()
+        var incoming by mutableStateOf<Picked?>(null)
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host, incoming = incoming, onIncomingDone = { incoming = null }) {} } }
+        host.pdfs += listOf(host.file("three.pdf", textPdf("page one", "page two", "page three")))
+        onNodeWithTag("homePages").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("card-2")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("card-2").performClick()
+        onNodeWithTag("deletePages").performClick()
+        incoming = host.file("other.pdf", textPdf("another"))
+        waitUntil(timeoutMillis = 5_000) { onAllNodes(hasTestTag("keepArrived")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("keepArrived").performClick()
+        onNodeWithTag("card-3").assertExists() // still editing three.pdf
+        onNodeWithTag("card-2").assertDoesNotExist()
+        incoming = host.file("other.pdf", textPdf("another"))
+        waitUntil(timeoutMillis = 5_000) { onAllNodes(hasTestTag("openArrived")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("openArrived").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("title")).fetchSemanticsNodes().any { n ->
+            n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.any { it.text.contains("other.pdf") } == true } }
+    }
+
+    /** U-P31 guard: Recent says when a file was opened, and removing one has Undo (name only, no Undo before) */
+    @Test
+    fun recent_says_when_and_a_removed_file_comes_back() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("invoice.pdf", textPdf("total")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("page-1")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("back").performClick()
+        onNodeWithTag("opened-invoice.pdf", useUnmergedTree = true).assertTextContains("Opened today")
+        onNodeWithTag("forget-invoice.pdf").performClick()
+        onNodeWithTag("recent-invoice.pdf").assertDoesNotExist()
+        onNodeWithText("Undo").performClick()
+        onNodeWithTag("recent-invoice.pdf").assertExists()
+    }
+
+    @Test
+    fun opened_label_reads_today_yesterday_and_a_date() {
+        val today = java.time.LocalDate.of(2026, 11, 24)
+        fun ms(d: java.time.LocalDate) = d.atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        assertEquals("Opened today", com.jurisgames.papeles.ui.openedLabel(ms(today), today))
+        assertEquals("Opened yesterday", com.jurisgames.papeles.ui.openedLabel(ms(today.minusDays(1)), today))
+        assertTrue(com.jurisgames.papeles.ui.openedLabel(ms(today.minusDays(21)), today).contains("2026"))
+    }
+
+    /** U-P21 guard: files handed to the desktop window (command line, drop): a PDF opens, else photos, else nothing */
+    @Test
+    fun files_given_to_the_window_are_routed() {
+        val dir = Files.createTempDirectory("papeles-route").toFile()
+        fun f(n: String) = File(dir, n).apply { writeBytes(byteArrayOf(1)) }
+        val pdf = f("a.PDF"); val png = f("b.png"); val txt = f("c.txt")
+        assertEquals("a.PDF", routeFiles(listOf(txt, png, pdf)).first?.name)
+        assertTrue(routeFiles(listOf(txt, png, pdf)).second.isEmpty())
+        assertEquals(listOf("b.png"), routeFiles(listOf(txt, png)).second.map { it.name })
+        assertEquals(null, routeFiles(listOf(txt, File(dir, "missing.pdf"))).first)
+    }
+
+    /** U-P16 guard: the page crop above a field carries what was typed (it showed the empty field) */
+    @Test
+    fun the_crop_shows_what_was_typed() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("form.pdf", formPdf()))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("fill")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("fill").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("peekValue-name")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("input-name").performTextClearance()
+        onNodeWithTag("input-name").performTextInput("Ana")
+        onNodeWithTag("peekValue-name").assert(androidx.compose.ui.test.hasContentDescription("Ana"))
+    }
+
+    /** U-P15 guard: a placed text can be picked, moved, edited and deleted on its own (only Undo of the last before) */
+    @Test
+    fun a_placed_mark_is_picked_moved_edited_and_deleted() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("letter.pdf", textPdf("Dear sir")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("mark")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("mark").performClick()
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.3f, height * 0.3f)) }
+        onNodeWithTag("markText").performTextInput("Hola")
+        onNodeWithTag("addText").performClick()
+        onNodeWithTag("toolSelect").performClick()
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.3f + 4f, height * 0.3f + 4f)) }
+        onNodeWithTag("deleteMark").assertExists()
+        // drag it down a fifth of the page: the old place is empty, the new one has it
+        onNodeWithTag("markPage-1").performTouchInput {
+            down(Offset(width * 0.3f + 4f, height * 0.3f + 4f)); moveTo(Offset(width * 0.3f + 4f, height * 0.4f)); moveTo(Offset(width * 0.3f + 4f, height * 0.5f + 4f)); up()
+        }
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.3f + 4f, height * 0.3f + 4f)) }
+        onNodeWithTag("deleteMark").assertDoesNotExist()
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.3f + 4f, height * 0.5f + 4f)) }
+        onNodeWithTag("editMark").performClick()
+        onNodeWithTag("markText").assertTextContains("Hola")
+        onNodeWithTag("markText").performTextInput(" otra vez")
+        onNodeWithTag("addText").performClick()
+        onNodeWithTag("make").assertIsEnabled()
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.3f + 4f, height * 0.5f + 4f)) }
+        onNodeWithTag("deleteMark").performClick()
+        onNodeWithTag("make").assertIsNotEnabled() // the only mark is gone
+    }
+
+    /** U-P17 guard: the cleaned page can be seen before saving, and a removed page comes back with Undo */
+    @Test
+    fun scan_shows_the_result_and_remove_has_undo() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        onNodeWithTag("scan").performClick()
+        host.pictures += listOf(host.file("a.png", png(300, 400)), host.file("b.png", png(300, 400)))
+        onNodeWithTag("takePhoto").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("scanPhoto")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("takePhoto").assertTextContains("Photo of the next page")
+        onNodeWithTag("viewResult").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("scanResult")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("viewCorners").performClick()
+        onNodeWithTag("scanPhoto").assertExists()
+        onNodeWithTag("removeScan").performClick()
+        onNodeWithTag("scanPage-2").assertDoesNotExist()
+        onNodeWithText("Undo").performClick()
+        onNodeWithTag("scanPage-2").assertExists()
+    }
+
+    /** U-P21 guard: the reader answers the computer's keys: Ctrl+F opens search, Page Down turns the page */
+    @Test
+    fun the_reader_answers_find_and_page_keys() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("three.pdf", textPdf("one", "two", "three")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("page-1")).fetchSemanticsNodes().isNotEmpty() }
+        com.jurisgames.papeles.ui.Keys.commands.tryEmit(com.jurisgames.papeles.ui.KeyCommand.Find)
+        waitUntil(timeoutMillis = 5_000) { onAllNodes(hasTestTag("searchField")).fetchSemanticsNodes().isNotEmpty() }
+        com.jurisgames.papeles.ui.Keys.commands.tryEmit(com.jurisgames.papeles.ui.KeyCommand.NextPage)
+        waitUntil(timeoutMillis = 5_000) { onAllNodes(hasTestTag("pageOf")).fetchSemanticsNodes().any { n ->
+            n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.any { it.text.contains("Page 2") } == true } }
+    }
+
+    /** U-P16 guard: the filled pages can be seen before saving (no look at the result before) */
+    @Test
+    fun the_filled_pages_can_be_seen_before_saving() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("form.pdf", formPdf()))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("fill")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("fill").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("input-name")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("previewFill").assertIsNotEnabled()
+        onNodeWithTag("input-name").performTextInput("Ana")
+        onNodeWithTag("previewFill").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("previewPages")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("previewClose").performClick()
+        assertTrue(host.saved.isEmpty()) // seeing it saves nothing
+    }
+
+    /** U-P15 guard: Sign and Mark zoom in: the page gets bigger than it was (neither could zoom) */
+    @Test
+    fun sign_and_mark_zoom_in() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("letter.pdf", textPdf("Dear sir")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("mark")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("mark").performClick()
+        val before = onNodeWithTag("markPage-1").fetchSemanticsNode().size.width
+        onNodeWithTag("markZoomIn").performClick()
+        waitForIdle()
+        assertTrue(onNodeWithTag("markPage-1").fetchSemanticsNode().size.width > before * 1.3f)
+        onNodeWithTag("back").performClick()
+        onNodeWithTag("sign").performClick()
+        onNodeWithTag("pad").performTouchInput { click(center) }
+        onNodeWithTag("useSignature").performClick()
+        val signBefore = onNodeWithTag("signPage-1").fetchSemanticsNode().size.width
+        onNodeWithTag("signZoomIn").performClick()
+        waitForIdle()
+        assertTrue(onNodeWithTag("signPage-1").fetchSemanticsNode().size.width > signBefore * 1.3f)
     }
 
     /** U-P22 guard: with the search box or Mark's text bar open, Back closes that first (it closed the whole PDF) */

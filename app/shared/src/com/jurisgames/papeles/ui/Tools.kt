@@ -71,6 +71,14 @@ fun nameWith(name: String, words: String): String {
 /** Opens a file in the reader (PapelesApp's open), for the saved row's Open. */
 val LocalOpen = androidx.compose.runtime.staticCompositionLocalOf<((Picked) -> Unit)?> { null }
 
+/** U-P21: keyboard commands a computer's window passes to the screen on show (the reader listens). */
+enum class KeyCommand { Find, NextPage, PrevPage, ZoomIn, ZoomOut }
+object Keys { val commands = kotlinx.coroutines.flow.MutableSharedFlow<KeyCommand>(extraBufferCapacity = 8) }
+
+/** U-P27: whether the screen on show holds work not saved yet (set by guardBack), so a file arriving asks first. */
+class Unsaved { var now by mutableStateOf(false) }
+val LocalUnsaved = androidx.compose.runtime.staticCompositionLocalOf<Unsaved?> { null }
+
 /** After a save: what was saved and where (U-P6), Open in the reader, and a button to hand it on. */
 @Composable
 internal fun SavedRow(host: Host, saved: Picked?, extra: String = "") {
@@ -84,6 +92,8 @@ internal fun SavedRow(host: Host, saved: Picked?, extra: String = "") {
             if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("savedExtra"))
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                 if (open != null) TextButton(onClick = { open(saved) }, modifier = Modifier.testTag("openSaved")) { Text(tr("Open")) }
+                // APP-RULE 222: what it made can be printed too
+                if (host.canPrint) TextButton(onClick = { host.print(saved) }, modifier = Modifier.testTag("printSaved")) { Text(tr("Print")) }
                 OutlinedButton(onClick = { host.share(saved) }, modifier = Modifier.padding(start = 8.dp).testTag("share")) { Text(tr("Share")) }
             }
         }

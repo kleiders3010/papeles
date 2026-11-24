@@ -38,6 +38,12 @@ object Recent {
         return load(dir)
     }
 
+    /** U-P31: Undo of a remove puts the entry back where its time puts it. */
+    fun restore(dir: File, f: RecentFile): List<RecentFile> {
+        write(dir, (load(dir).filter { it.key != f.key } + f).sortedByDescending { it.openedMs })
+        return load(dir)
+    }
+
     fun remove(dir: File, key: String): List<RecentFile> {
         write(dir, load(dir).filter { it.key != key })
         return load(dir)
@@ -45,6 +51,15 @@ object Recent {
 }
 
 /** The page each file was last read on (U-P11), kept for the files in Recent only. */
+/** U-P30: pages drawn dark (inverted) for reading at night; one setting for every PDF. */
+object DarkPages {
+    private fun file(dir: File) = File(dir, "dark-pages")
+    fun get(dir: File): Boolean = file(dir).exists()
+    fun set(dir: File, on: Boolean) {
+        runCatching { if (on) file(dir).writeText("1") else file(dir).delete() }
+    }
+}
+
 object LastPage {
     private fun file(dir: File) = File(dir, "pages.tsv")
 

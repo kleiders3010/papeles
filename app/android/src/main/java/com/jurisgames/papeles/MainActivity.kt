@@ -181,13 +181,45 @@ class MainActivity : ComponentActivity(), Host {
         return if (ok) Picked(name, key) { contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("cannot read") } else null
     }
 
-    override fun share(file: Picked) {
+    /** A link another app may read: our own copies go out through the FileProvider (a file:// link may not leave). */
+    private fun outUri(file: Picked): Uri? {
         val k = Uri.parse(file.key)
-        // our own copy of a file another app handed in goes out through the FileProvider (a file:// link may not leave)
-        val out = if (k.scheme == "file") runCatching { androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", File(k.path!!)) }.getOrNull() ?: return else k
+        return if (k.scheme == "file") runCatching { androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", File(k.path!!)) }.getOrNull() else k
+    }
+
+    override fun share(file: Picked) {
+        val out = outUri(file) ?: return
         val send = Intent(Intent.ACTION_SEND).setType("application/pdf").putExtra(Intent.EXTRA_STREAM, out)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         runCatching { startActivity(Intent.createChooser(send, tr("Share"))) }
+    }
+
+    override fun openWith(file: Picked) {
+        val out = outUri(file) ?: return
+        val view = Intent(Intent.ACTION_VIEW).setDataAndType(out, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        runCatching { startActivity(Intent.createChooser(view, tr("Open in another app"))) }
+    }
+
+    override val canPrint: Boolean get() = true
+
+    /** U-P8: Android's print dialog takes the PDF's bytes as they are (PrintManager + a PDF document adapter). */
+    override fun print(file: Picked) {
+        val pm = getSystemService(PRINT_SERVICE) as? android.print.PrintManager ?: return
+        val adapter = object : android.print.PrintDocumentAdapter() {
+            override fun onLayout(old: android.print.PrintAttributes?, new: android.print.PrintAttributes?, cancel: android.os.CancellationSignal?,
+                                  cb: LayoutResultCallback, extras: Bundle?) {
+                if (cancel?.isCanceled == true) { cb.onLayoutCancelled(); return }
+                cb.onLayoutFinished(android.print.PrintDocumentInfo.Builder(file.name)
+                    .setContentType(android.print.PrintDocumentInfo.CONTENT_TYPE_DOCUMENT).build(), true)
+            }
+            override fun onWrite(pages: Array<out android.print.PageRange>?, dest: android.os.ParcelFileDescriptor, cancel: android.os.CancellationSignal?,
+                                 cb: WriteResultCallback) {
+                runCatching { android.os.ParcelFileDescriptor.AutoCloseOutputStream(dest).use { it.write(file.read()) } }
+                    .onSuccess { cb.onWriteFinished(arrayOf(android.print.PageRange.ALL_PAGES)) }
+                    .onFailure { cb.onWriteFailed(it.message) }
+            }
+        }
+        runCatching { pm.print(file.name, adapter, null) }
     }
 
     override fun image(p: Picture): ImageBitmap {

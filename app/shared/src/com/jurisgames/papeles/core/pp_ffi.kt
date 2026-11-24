@@ -717,6 +717,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_pp_ffi_checksum_func_text_box_size(
     ): Int
+    external fun uniffi_pp_ffi_checksum_method_pdffile_lines_in(
+    ): Int
     external fun uniffi_pp_ffi_checksum_method_pdffile_page_count(
     ): Int
     external fun uniffi_pp_ffi_checksum_method_pdffile_page_size(
@@ -751,6 +753,8 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_pp_ffi_fn_free_pdffile(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
+    external fun uniffi_pp_ffi_fn_method_pdffile_lines_in(`ptr`: Long,`page`: Int,`area`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_pp_ffi_fn_method_pdffile_page_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
     external fun uniffi_pp_ffi_fn_method_pdffile_page_size(`ptr`: Long,`page`: Int,uniffi_out_err: UniffiRustCallStatus, 
@@ -983,6 +987,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pp_ffi_checksum_func_text_box_size() and 0xFFFF) != 40446) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pp_ffi_checksum_method_pdffile_lines_in() and 0xFFFF) != 17165) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pp_ffi_checksum_method_pdffile_page_count() and 0xFFFF) != 16665) {
@@ -1449,6 +1456,11 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
  */
 public interface PdfFileInterface {
     
+    /**
+     * The text lines a dragged box covers, grown to whole words (a highlight follows the words, U-P33).
+     */
+    fun `linesIn`(`page`: kotlin.UInt, `area`: Area): List<Area>
+    
     fun `pageCount`(): kotlin.UInt
     
     fun `pageSize`(`page`: kotlin.UInt): PageBox
@@ -1571,6 +1583,25 @@ open class PdfFile: Disposable, AutoCloseable, PdfFileInterface
             UniffiLib.uniffi_pp_ffi_fn_clone_pdffile(handle, status)
         }
     }
+
+    
+    /**
+     * The text lines a dragged box covers, grown to whole words (a highlight follows the words, U-P33).
+     */
+    @Throws(PpException::class)override fun `linesIn`(`page`: kotlin.UInt, `area`: Area): List<Area> {
+            return FfiConverterSequenceTypeArea.lift(
+    callWithHandle {
+    uniffiRustCallWithError(PpException) { _status ->
+    UniffiLib.uniffi_pp_ffi_fn_method_pdffile_lines_in(
+        it,
+        
+        FfiConverterUInt.lower(`page`),
+        FfiConverterTypeArea.lower(`area`),_status)
+}
+    }
+    )
+    }
+    
 
     override fun `pageCount`(): kotlin.UInt {
             return FfiConverterUInt.lift(

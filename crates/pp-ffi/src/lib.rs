@@ -143,6 +143,13 @@ impl PdfFile {
         self.with(|v| v.text(page))
     }
 
+    /// The text lines a dragged box covers, grown to whole words (a highlight follows the words, U-P33).
+    pub fn lines_in(&self, page: u32, area: Area) -> Result<Vec<Area>> {
+        let a = pp_core::view::Area { x: area.x, y: area.y, w: area.w, h: area.h };
+        let lines = self.with(|v| v.lines_in(page, a))?;
+        Ok(lines.into_iter().map(|a| Area { x: a.x, y: a.y, w: a.w, h: a.h }).collect())
+    }
+
     /// Every place `words` appear (any case), up to `limit` hits.
     pub fn search(&self, words: String, limit: u32) -> Result<Vec<Hit>> {
         let hits = self.with(|v| v.search(&words, limit as usize))?;

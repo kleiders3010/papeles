@@ -99,6 +99,65 @@ impl<'a> Viewer<'a> {
         Ok(p.text().map_err(|e| Error::Damaged(e.to_string()))?.inside_rect(all))
     }
 
+    /// The text a box dragged on the page covers, one box per line, grown to whole words: a highlight follows the
+    /// words instead of cutting them ("aco|rdado", 2026-11-24 review U-P33). Empty when the box holds no letters.
+    pub fn lines_in(&self, page: u32, area: Area) -> Result<Vec<Area>> {
+        let p = self.page(page)?;
+        let h = p.height().value;
+        let text = p.text().map_err(|e| Error::Damaged(e.to_string()))?;
+        // every letter with its box (top-left origin); spaces are None so words end there
+        let chars: Vec<Option<Area>> = text
+            .chars()
+            .iter()
+            .map(|c| {
+                if c.unicode_char().map_or(true, |ch| ch.is_whitespace()) {
+                    return None;
+                }
+                c.loose_bounds().ok().map(|b| Area { x: b.left().value, y: h - b.top().value, w: b.width().value, h: b.height().value })
+            })
+            .collect();
+        let mid = |a: &Area| (a.x + a.w / 2.0, a.y + a.h / 2.0);
+        let same_line = |a: &Area, b: &Area| (mid(a).1 - mid(b).1).abs() < a.h.max(b.h) * 0.5;
+        let mut take = vec![false; chars.len()];
+        for (i, c) in chars.iter().enumerate() {
+            if let Some(a) = c {
+                let (cx, cy) = mid(a);
+                if cx >= area.x && cx <= area.x + area.w && cy >= area.y && cy <= area.y + area.h {
+                    take[i] = true;
+                }
+            }
+        }
+        // grow each picked letter to its whole word (neighbours up to a space or a line change)
+        for i in 0..chars.len() {
+            if !take[i] {
+                continue;
+            }
+            let a = chars[i].unwrap();
+            let mut j = i;
+            while j > 0 && matches!(chars[j - 1], Some(b) if same_line(&a, &b)) && !take[j - 1] {
+                j -= 1;
+                take[j] = true;
+            }
+            let mut k = i;
+            while k + 1 < chars.len() && matches!(chars[k + 1], Some(b) if same_line(&a, &b)) && !take[k + 1] {
+                k += 1;
+                take[k] = true;
+            }
+        }
+        let mut lines: Vec<Area> = Vec::new();
+        for (i, c) in chars.iter().enumerate() {
+            let (true, Some(a)) = (take[i], c) else { continue };
+            if let Some(l) = lines.iter_mut().find(|l| same_line(l, a)) {
+                let (x0, y0) = (l.x.min(a.x), l.y.min(a.y));
+                let (x1, y1) = ((l.x + l.w).max(a.x + a.w), (l.y + l.h).max(a.y + a.h));
+                *l = Area { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+            } else {
+                lines.push(*a);
+            }
+        }
+        Ok(lines)
+    }
+
     /// Every place `words` appear (case-insensitive), page by page, up to `limit` hits.
     pub fn search(&self, words: &str, limit: usize) -> Result<Vec<Hit>> {
         let words = words.trim();

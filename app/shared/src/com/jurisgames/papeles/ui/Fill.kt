@@ -1,5 +1,6 @@
 package com.jurisgames.papeles.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.IntOffset
@@ -75,6 +84,8 @@ fun FillScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
     val values = remember(doc) { mutableStateMapOf<String, String>() }
     var saved by remember { mutableStateOf<Picked?>(null) }
     var warn by remember { mutableStateOf(false) }
+    // U-P16: the pages with fields drawn as they will be saved
+    var preview by remember { mutableStateOf<List<ImageBitmap>?>(null) }
     LaunchedEffect(doc) {
         val r = withContext(Dispatchers.IO) { runCatching { formFields(input) to isSigned(input) } }
         r.onSuccess { (f, s) ->
@@ -110,7 +121,7 @@ fun FillScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
         LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(g, key = { it.name }) { group ->
                 Column(Modifier.fillMaxWidth().testTag("field-${group.name}")) {
-                    Peek(doc, host, group, pictures)
+                    Peek(doc, host, group, pictures, values[group.name] ?: group.first.value)
                     FieldControl(group, values[group.name] ?: group.first.value) { values[group.name] = it; saved = null }
                     HorizontalDivider(Modifier.padding(top = 8.dp))
                 }
@@ -122,8 +133,28 @@ fun FillScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
                 Text(tr("Save filled copy"))
             }
             Text(if (n == 0) tr("Nothing changed yet") else plural(n, "1 changed", "{n} changed"), Modifier.padding(start = 12.dp).testTag("changedCount"))
+            TextButton(onClick = {
+                val c = changed()
+                val pages = groups.orEmpty().map { it.first.page }.distinct().sorted()
+                worker.run({
+                    val bytes = fillForm(input, c)
+                    com.jurisgames.papeles.core.openPdf(bytes, doc.password).use { f -> pages.map { host.image(f.render(it, 1000)) } }
+                }, tr("Filling in the form…")) { preview = it }
+            }, enabled = n > 0 && !worker.busy, modifier = Modifier.padding(start = 8.dp).testTag("previewFill")) { Text(tr("See the filled pages")) }
         }
         SavedRow(host, saved)
+    }
+    preview?.let { shots ->
+        AlertDialog(
+            onDismissRequest = { preview = null },
+            confirmButton = { TextButton(onClick = { preview = null }, modifier = Modifier.testTag("previewClose")) { Text(tr("Close")) } },
+            title = { Text(tr("The filled pages")) },
+            text = {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp).testTag("previewPages"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(shots.size) { i -> Image(shots[i], null, Modifier.fillMaxWidth().background(Color.White)) }
+                }
+            },
+        )
     }
     if (warn) AlertDialog(
         onDismissRequest = { warn = false },
@@ -136,7 +167,7 @@ fun FillScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
 
 /** The part of the page around the field, a little to its left and above it, where its label usually is. */
 @Composable
-private fun Peek(doc: OpenDoc, host: Host, group: Group, cache: HashMap<UInt, ImageBitmap?>) {
+private fun Peek(doc: OpenDoc, host: Host, group: Group, cache: HashMap<UInt, ImageBitmap?>, value: String) {
     val f = group.first
     var img by remember(doc, f.page) { mutableStateOf(cache[f.page]) }
     LaunchedEffect(doc, f.page) {
@@ -160,6 +191,31 @@ private fun Peek(doc: OpenDoc, host: Host, group: Group, cache: HashMap<UInt, Im
         val off = IntOffset((x0 * s).toInt(), (y0 * s).toInt())
         val size = IntSize(((x1 - x0) * s).toInt().coerceIn(1, bm.width - off.x), ((y1 - y0) * s).toInt().coerceIn(1, bm.height - off.y))
         Image(BitmapPainter(bm, off, size), null, Modifier.fillMaxSize())
+        // U-P16: what was typed or ticked, drawn where the field is, so the crop shows the filled form
+        val measurer = rememberTextMeasurer()
+        val ink = Color(0xFF1A237E)
+        Canvas(Modifier.fillMaxSize().semantics { contentDescription = value }.testTag("peekValue-${group.name}")) {
+            val k = size.width / (x1 - x0)
+            for (w in group.widgets) {
+                val at = Offset((w.area.x - x0) * k, (w.area.y - y0) * k)
+                val sz = Size(w.area.w * k, w.area.h * k)
+                when (group.kind) {
+                    FieldKind.TEXT, FieldKind.CHOICE -> if (value != group.first.value) {
+                        drawRect(Color.White, at, sz)
+                        val fontPx = (sz.height * 0.6f).coerceIn(6f, 40f)
+                        drawText(measurer, value, at + Offset(2f, (sz.height - fontPx * 1.25f) / 2f),
+                            style = TextStyle(color = ink, fontSize = androidx.compose.ui.unit.TextUnit(fontPx / density / fontScale, androidx.compose.ui.unit.TextUnitType.Sp)),
+                            maxLines = if (w.multiline) 6 else 1, size = Size((sz.width - 2f).coerceAtLeast(1f), sz.height.coerceAtLeast(1f)))
+                    }
+                    FieldKind.CHECK -> if (value != "Off") {
+                        drawLine(ink, at + Offset(sz.width * 0.2f, sz.height * 0.55f), at + Offset(sz.width * 0.42f, sz.height * 0.78f), strokeWidth = sz.height * 0.14f)
+                        drawLine(ink, at + Offset(sz.width * 0.42f, sz.height * 0.78f), at + Offset(sz.width * 0.82f, sz.height * 0.22f), strokeWidth = sz.height * 0.14f)
+                    }
+                    FieldKind.RADIO -> if (w.on == value) drawCircle(ink, minOf(sz.width, sz.height) * 0.28f, at + Offset(sz.width / 2f, sz.height / 2f))
+                    else -> {}
+                }
+            }
+        }
     }
 }
 

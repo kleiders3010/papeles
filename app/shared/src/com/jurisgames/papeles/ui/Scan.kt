@@ -56,6 +56,8 @@ import com.jurisgames.papeles.core.photoCorners
 import com.jurisgames.papeles.core.photoPreview
 import com.jurisgames.papeles.core.picturesToPdf
 import com.jurisgames.papeles.core.scanPage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** The preview of a photo is drawn at most this many pixels on its longest side. */
 private const val PREVIEW_SIDE = 1200u
@@ -82,6 +84,9 @@ fun ScanScreen(host: Host, worker: Worker, back: () -> Unit) {
     var at by remember { mutableStateOf(0) }
     var paper by remember { mutableStateOf(Paper.A4) }
     var saved by remember { mutableStateOf<Picked?>(null) }
+    // U-P17: the cleaned page instead of the photo with its corners (the look was blind until the PDF was saved)
+    var showResult by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<ImageBitmap?>(null) }
 
     fun add(picked: List<Picked>) {
         if (picked.isEmpty()) return
@@ -112,7 +117,9 @@ fun ScanScreen(host: Host, worker: Worker, back: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TopRow(tr("Scan"), guardBack(items.isNotEmpty() && saved == null, back))
         androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) { // U-P4
-            Button(onClick = { host.takePhoto { add(it) } }, enabled = !worker.busy, modifier = Modifier.testTag("takePhoto")) { Text(tr("Take a photo")) }
+            Button(onClick = { host.takePhoto { add(it) } }, enabled = !worker.busy, modifier = Modifier.testTag("takePhoto")) {
+                Text(if (items.isEmpty()) tr("Take a photo") else tr("Photo of the next page"))
+            }
             OutlinedButton(onClick = { host.pickPictures { add(it) } }, enabled = !worker.busy, modifier = Modifier.testTag("add")) { Text(tr("Choose photos")) }
         }
         val cur = items.getOrNull(at)
@@ -120,11 +127,26 @@ fun ScanScreen(host: Host, worker: Worker, back: () -> Unit) {
             Hint(tr("Take a photo of each page, or choose photos. The pages are straightened and cleaned on this device."))
             Box(Modifier.weight(1f))
         } else {
-            Text(tr("Drag the corners to the paper's edges."), Modifier.padding(horizontal = 16.dp).testTag("scanHint"))
+            androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.Center) {
+                FilterChip(selected = !showResult, onClick = { showResult = false }, label = { Text(tr("Corners")) }, modifier = Modifier.padding(end = 6.dp).testTag("viewCorners"))
+                FilterChip(selected = showResult, onClick = { showResult = true }, label = { Text(tr("Result")) }, modifier = Modifier.padding(end = 6.dp).testTag("viewResult"))
+                if (!showResult) Text(tr("Drag the corners to the paper's edges."), Modifier.align(Alignment.CenterVertically).testTag("scanHint"))
+            }
+            // U-P17: the page as it will be saved, made again when the corners or the look change
+            val key = Triple(cur, cur.look, cur.corners.toList())
+            LaunchedEffect(showResult, key) {
+                if (!showResult) return@LaunchedEffect
+                result = withContext(Dispatchers.IO) {
+                    runCatching { host.image(photoPreview(scanPage(cur.photo, cur.corners.map { PhotoPoint(it.x, it.y) }, cur.look), PREVIEW_SIDE)) }.getOrNull()
+                }
+            }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp),
                 contentAlignment = Alignment.Center) {
                 val ratio = (cur.w / cur.h).takeIf { it.isFinite() && it > 0.05f } ?: 0.75f
-                Corners(cur, minOf(maxWidth, maxHeight * ratio), ratio)
+                if (showResult) {
+                    val r = result
+                    if (r != null) Image(r, tr("The cleaned page"), Modifier.fillMaxSize().testTag("scanResult"))
+                } else Corners(cur, minOf(maxWidth, maxHeight * ratio), ratio)
             }
             androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) { // U-P4: wraps on a small phone or a long language instead of breaking words letter by letter
                 for ((l, label) in listOf(ScanLook.DOCUMENT to tr("Document"), ScanLook.GREY to tr("Grey"), ScanLook.COLOUR to tr("Colour"))) {
@@ -136,7 +158,12 @@ fun ScanScreen(host: Host, worker: Worker, back: () -> Unit) {
             androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) { // U-P4: wraps on a small phone or a long language instead of breaking words letter by letter
                 TextButton(onClick = { items.add(at - 1, items.removeAt(at)); at--; saved = null }, enabled = at > 0, modifier = Modifier.testTag("earlier")) { Text(tr("Move up")) }
                 TextButton(onClick = { items.add(at + 1, items.removeAt(at)); at++; saved = null }, enabled = at < items.size - 1, modifier = Modifier.testTag("later")) { Text(tr("Move down")) }
-                TextButton(onClick = { items.removeAt(at); at = at.coerceAtMost(items.size - 1).coerceAtLeast(0); saved = null }, modifier = Modifier.testTag("removeScan")) { Text(tr("Remove")) }
+                TextButton(onClick = {
+                    val where = at
+                    val gone = items.removeAt(where); at = at.coerceAtMost(items.size - 1).coerceAtLeast(0); saved = null
+                    // U-P17: Remove can be undone
+                    worker.say(tr("Page removed"), tr("Undo")) { items.add(where.coerceAtMost(items.size), gone); at = where.coerceAtMost(items.size - 1); saved = null }
+                }, modifier = Modifier.testTag("removeScan")) { Text(tr("Remove")) }
             }
             LazyRow(Modifier.fillMaxWidth().height(72.dp).testTag("scanPages"), horizontalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
@@ -149,8 +176,13 @@ fun ScanScreen(host: Host, worker: Worker, back: () -> Unit) {
                 }
             }
         }
-        Text(tr("Page size"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 16.dp, top = 4.dp))
-        Choice(listOf(Triple(Paper.A4, tr("A4"), ""), Triple(Paper.LETTER, tr("Letter"), ""), Triple(Paper.FIT, tr("Same as the picture"), "")), paper, "paper") { paper = it }
+        // U-P17: one row of chips (three radio rows took room from the photo)
+        androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.Center) {
+            Text(tr("Page size"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.align(Alignment.CenterVertically).padding(end = 8.dp))
+            for ((p, label) in listOf(Paper.A4 to tr("A4"), Paper.LETTER to tr("Letter"), Paper.FIT to tr("Same as the picture"))) {
+                FilterChip(selected = paper == p, onClick = { paper = p }, label = { Text(label) }, modifier = Modifier.padding(end = 6.dp).testTag("paper-$p"))
+            }
+        }
         Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
             Button(onClick = { save() }, enabled = items.isNotEmpty() && !worker.busy, modifier = Modifier.testTag("make")) { Text(tr("Save as PDF")) }
         }

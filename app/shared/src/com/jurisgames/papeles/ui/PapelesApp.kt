@@ -125,8 +125,11 @@ class Worker(private val scope: CoroutineScope, private val snack: SnackbarHostS
         @Volatile var lastError: Throwable? = null
     }
 
-    fun say(text: String) {
-        scope.launch { snack.showSnackbar(text, duration = androidx.compose.material3.SnackbarDuration.Long) }
+    fun say(text: String, action: String? = null, onAction: () -> Unit = {}) {
+        scope.launch {
+            val r = snack.showSnackbar(text, actionLabel = action, duration = androidx.compose.material3.SnackbarDuration.Long)
+            if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) onAction()
+        }
     }
 }
 
@@ -145,6 +148,9 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
     var into by remember { mutableStateOf("") }
     // photos shared to the app (U-P7): Pictures to PDF starts with them
     var sharedPictures by remember { mutableStateOf<List<Picked>>(emptyList()) }
+    // U-P27: a file or photos from another app that arrived over unsaved work wait for "Open it" / "Keep working"
+    val unsaved = remember { Unsaved() }
+    var arrived by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
 
     fun close(s: Screen) {
         // every screen holding a file: Open on a tool's saved row leaves it for the new one
@@ -181,16 +187,32 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
         }
     }
 
+    fun whenFree(name: String, go: () -> Unit) {
+        if (unsaved.now) arrived = name to go else go()
+    }
+
     LaunchedEffect(pictures) {
         if (pictures.isEmpty()) return@LaunchedEffect
-        sharedPictures = pictures
-        close(screen)
-        screen = Screen.Pictures
+        val these = pictures
+        androidx.compose.runtime.withFrameNanos { }
+        whenFree(these.first().name) {
+            sharedPictures = these
+            close(screen)
+            screen = Screen.Pictures
+        }
         onPicturesDone()
     }
 
     LaunchedEffect(incoming) {
-        incoming?.let { open(it); onIncomingDone() }
+        // one frame first: a change made in the same frame has told the app it is unsaved by then (side effects run after effects start)
+        incoming?.let { p -> androidx.compose.runtime.withFrameNanos { }; whenFree(p.name) { open(p) }; onIncomingDone() }
+    }
+
+    arrived?.let { (name, go) ->
+        AlertDialog(onDismissRequest = { arrived = null }, title = { Text(tr("Open {name}?", "name" to name)) },
+            text = { Text(tr("What you did here hasn't been saved yet, and it will be lost.")) },
+            confirmButton = { TextButton(onClick = { arrived = null; unsaved.now = false; go() }, modifier = Modifier.testTag("openArrived")) { Text(tr("Open it")) } },
+            dismissButton = { TextButton(onClick = { arrived = null }, modifier = Modifier.testTag("keepArrived")) { Text(tr("Keep working")) } })
     }
 
     // Rule 171 (U-P1): which screen was open, and the open file's name and key (never its password), survive Android
@@ -222,7 +244,7 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
         }
     }
 
-    androidx.compose.runtime.CompositionLocalProvider(LocalOpen provides { p: Picked -> open(p) }) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalOpen provides { p: Picked -> open(p) }, LocalUnsaved provides unsaved) {
     Scaffold(snackbarHost = { SnackbarHost(snack) }) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (val s = screen) {
@@ -233,7 +255,10 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
                         val p = host.reopen(r.name, r.key)
                         if (p == null) { recent = Recent.remove(host.appFiles, r.key); worker.say(tr("This file is no longer there.")) } else open(p)
                     },
-                    forget = { recent = Recent.remove(host.appFiles, it.key) },
+                    forget = { r ->
+                        recent = Recent.remove(host.appFiles, r.key)
+                        worker.say(tr("Removed from the list: {name}", "name" to r.name), tr("Undo")) { recent = Recent.restore(host.appFiles, r) } // U-P31
+                    },
                     go = { screen = it })
                 is Screen.Reader -> Reader(s.doc, host, worker, back = { close(s); screen = Screen.Home }, editPages = { screen = Screen.Pages(s.doc) }, fill = { screen = Screen.Fill(s.doc) }, sign = { screen = Screen.Sign(s.doc) }, mark = { screen = Screen.Mark(s.doc) })
                 is Screen.Sign -> SignScreen(s.doc, host, worker, back = { screen = Screen.Reader(s.doc) })
@@ -277,6 +302,10 @@ object SystemBack {
 @Composable
 fun guardBack(unsaved: Boolean, back: () -> Unit): () -> Unit {
     var ask by remember { mutableStateOf(false) }
+    // U-P27: the app knows too, so a file arriving from another app asks before replacing this screen
+    val holder = LocalUnsaved.current
+    androidx.compose.runtime.SideEffect { holder?.now = unsaved }
+    androidx.compose.runtime.DisposableEffect(holder) { onDispose { holder?.now = false } }
     if (ask) AlertDialog(onDismissRequest = { ask = false }, title = { Text(tr("Leave without saving?")) },
         text = { Text(tr("What you did here hasn't been saved yet, and it will be lost.")) },
         confirmButton = { TextButton(onClick = { ask = false; back() }, modifier = Modifier.testTag("leaveAnyway")) { Text(tr("Leave")) } },
@@ -335,7 +364,12 @@ private fun Home(host: Host, recent: List<RecentFile>, worker: Worker, onTheme: 
             }
             items(recent, key = { it.key }) { r ->
                 Row(Modifier.fillMaxWidth().clickable { reopen(r) }.padding(vertical = 6.dp).testTag("recent-" + r.name), verticalAlignment = Alignment.CenterVertically) {
-                    Text(r.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // U-P31: when it was opened, so two files with one name can be told apart
+                    Column(Modifier.weight(1f)) {
+                        Text(r.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(openedLabel(r.openedMs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("opened-" + r.name))
+                    }
                     IconButton(onClick = { forget(r) }, modifier = Modifier.testTag("forget-" + r.name)) { Icon(Ic.Close, tr("Remove from the list")) }
                 }
                 HorizontalDivider()
@@ -361,6 +395,9 @@ private fun Action(icon: ImageVector, label: String, tag: String, onClick: () ->
     }
 }
 
+const val SOURCE_URL = "https://github.com/kleiders3010/papeles"
+const val PRIVACY_URL = "https://apps.jurisgames.com/privacy/"
+
 @Composable
 private fun SettingsDialog(host: Host, onTheme: (DarkMode) -> Unit, onClose: () -> Unit) {
     var mode by remember { mutableStateOf(darkMode(host.appFiles)) }
@@ -378,6 +415,16 @@ private fun SettingsDialog(host: Host, onTheme: (DarkMode) -> Unit, onClose: () 
                         RadioButton(mode == m, null)
                         Text(tr(m.label))
                     }
+                }
+                // U-P25: what the app is, with its source and privacy policy one tap away (rule 144)
+                Text(tr("Free and open source. No ads, no account. Your files stay on this device."),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp).testTag("about"))
+                if (AppInfo.version.isNotEmpty()) Text(tr("Version {v}", "v" to AppInfo.version), style = MaterialTheme.typography.bodySmall)
+                val uri = androidx.compose.ui.platform.LocalUriHandler.current
+                Row {
+                    TextButton(onClick = { runCatching { uri.openUri(SOURCE_URL) } }, modifier = Modifier.testTag("sourceLink")) { Text(tr("Source code")) }
+                    TextButton(onClick = { runCatching { uri.openUri(PRIVACY_URL) } }, modifier = Modifier.testTag("privacyLink")) { Text(tr("Privacy")) }
                 }
             }
         },
@@ -407,6 +454,17 @@ fun PasswordDialog(name: String, wrong: Boolean, onOpen: (String) -> Unit, onClo
 }
 
 /** "1 page" / "{n} pages". */
+/** U-P31: "Opened today", "Opened yesterday", else "Opened 3 Nov 2026" in the app's language. */
+fun openedLabel(ms: Long, today: java.time.LocalDate = java.time.LocalDate.now()): String {
+    val day = java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+    return when (day) {
+        today -> tr("Opened today")
+        today.minusDays(1) -> tr("Opened yesterday")
+        else -> tr("Opened {date}", "date" to day.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM)
+            .withLocale(java.util.Locale(if (Lang.spanish) "es" else "en"))))
+    }
+}
+
 fun pagesLabel(n: Int): String = if (n == 1) tr("1 page") else tr("{n} pages", "n" to n)
 
 @Composable

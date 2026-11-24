@@ -76,6 +76,25 @@ fn search_finds_every_hit_with_areas_on_the_page() {
 }
 
 #[test]
+fn a_dragged_box_becomes_whole_words_per_line() {
+    let e = engine();
+    let v = e.open(pdf(&[&["The cat sat", "on the CAT mat"]], false), None).unwrap();
+    let hits = v.search("cat", 100).unwrap();
+    let (c1, c2) = (hits[0].areas[0], hits[1].areas[0]);
+    // a box from the middle of the first "cat" to just past its end: the whole word, not half of it
+    let half = pp_core::view::Area { x: c1.x + c1.w * 0.4, y: c1.y, w: c1.w * 0.7, h: c1.h };
+    let one = v.lines_in(1, half).unwrap();
+    assert_eq!(one.len(), 1, "{one:?}"); // pinned: one line
+    assert!(one[0].x <= c1.x + 0.5 && one[0].x + one[0].w >= c1.x + c1.w - 0.5, "{one:?} vs {c1:?}");
+    // a box over both lines: two line boxes
+    let both = pp_core::view::Area { x: c1.x, y: c1.y, w: c1.w, h: (c2.y + c2.h) - c1.y };
+    assert_eq!(v.lines_in(1, both).unwrap().len(), 2); // pinned: two lines
+    // a box over empty paper: nothing
+    let empty = pp_core::view::Area { x: 400.0, y: 600.0, w: 50.0, h: 20.0 };
+    assert!(v.lines_in(1, empty).unwrap().is_empty());
+}
+
+#[test]
 fn bad_input_is_an_error() {
     let e = engine();
     assert!(matches!(e.open(b"nothing like a pdf".to_vec(), None), Err(Error::Damaged(_))));

@@ -25,6 +25,8 @@ compose.desktop {
             vendor = "Juris Games"
             description = "PDF tools on your own device, no accounts, free"
             modules("jdk.unsupported")
+            // U-P21: Windows offers Papeles in "Open with" for PDFs (the file arrives on the command line)
+            fileAssociation(mimeType = "application/pdf", extension = "pdf", description = "PDF document")
             // scripts/package-desktop.sh puts pp_ffi and pdfium here, per OS.
             appResourcesRootDir.set(layout.buildDirectory.dir("native"))
             windows {
