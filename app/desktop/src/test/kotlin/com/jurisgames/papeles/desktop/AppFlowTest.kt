@@ -345,8 +345,14 @@ class AppFlowTest {
         setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
         onNodeWithTag("join").performClick()
         onNodeWithTag("make").assertIsNotEnabled()
-        host.pdfs += listOf(host.file("a.pdf", textPdf("first A", "second A")), host.file("b.pdf", textPdf("only B")))
+        // APP-RULES 212 guard: with one PDF, Save is greyed and the screen says why
+        host.pdfs += listOf(host.file("a.pdf", textPdf("first A", "second A")))
         onNodeWithTag("add").performClick()
+        onNodeWithTag("make").assertIsNotEnabled()
+        onNodeWithTag("needMore").assertExists()
+        host.pdfs += listOf(host.file("b.pdf", textPdf("only B")))
+        onNodeWithTag("add").performClick()
+        onNodeWithTag("needMore").assertDoesNotExist()
         onNodeWithTag("down-0").performClick() // b first, then a
         // the row's name is a child node (the row itself merges nothing)
         onNodeWithText("1. b.pdf").assertExists()
@@ -473,6 +479,29 @@ class AppFlowTest {
         }
         // the open file itself is never changed
         assertEquals(3, pages(host.files["three.pdf"]!!)) // pinned: source untouched
+    }
+
+    /** APP-RULES 203/170 guard: Back over unsaved work asks first (it dropped the work in one tap); the system Back does the same */
+    @Test
+    fun back_over_unsaved_work_asks_first() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("three.pdf", textPdf("page one", "page two", "page three")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("editPages")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("editPages").performClick()
+        onNodeWithTag("back").performClick()
+        onNodeWithTag("editPages").assertExists() // nothing changed yet: back goes straight back
+        onNodeWithTag("editPages").performClick()
+        onNodeWithTag("card-2").performClick()
+        onNodeWithTag("turnRight").performClick()
+        onNodeWithTag("back").performClick()
+        onNodeWithTag("keepWorking").performClick()
+        onNodeWithTag("turnRight").assertExists() // still on the page editor, the turn kept
+        com.jurisgames.papeles.ui.SystemBack.current!!.invoke() // the system's Back (Android) goes the same way
+        waitForIdle()
+        onNodeWithTag("leaveAnyway").performClick()
+        onNodeWithTag("editPages").assertExists()
     }
 
     @Test

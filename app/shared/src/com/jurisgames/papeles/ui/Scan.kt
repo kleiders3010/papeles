@@ -104,7 +104,7 @@ fun ScanScreen(host: Host, worker: Worker, back: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopRow(tr("Scan"), back)
+        TopRow(tr("Scan"), guardBack(items.isNotEmpty() && saved == null, back))
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = { host.takePhoto { add(it) } }, enabled = !worker.busy, modifier = Modifier.testTag("takePhoto")) { Text(tr("Take a photo")) }
             OutlinedButton(onClick = { host.pickPictures { add(it) } }, enabled = !worker.busy, modifier = Modifier.testTag("add")) { Text(tr("Choose photos")) }

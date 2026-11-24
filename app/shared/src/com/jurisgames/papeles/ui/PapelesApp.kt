@@ -36,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -191,9 +192,33 @@ fun Busy(onCancel: () -> Unit = {}) {
     }
 }
 
+/** What the system's Back does now (Android): the open screen's own back, set by its TopRow; null on the home screen. */
+object SystemBack {
+    @Volatile var current: (() -> Unit)? = null
+}
+
+/**
+ * Back from a screen that holds work not saved yet asks first, never drops it in one tap (APP-RULES 203). The
+ * returned back is the one to give TopRow (so the system's Back asks too).
+ */
+@Composable
+fun guardBack(unsaved: Boolean, back: () -> Unit): () -> Unit {
+    var ask by remember { mutableStateOf(false) }
+    if (ask) AlertDialog(onDismissRequest = { ask = false }, title = { Text(tr("Leave without saving?")) },
+        text = { Text(tr("What you did here hasn't been saved yet, and it will be lost.")) },
+        confirmButton = { TextButton(onClick = { ask = false; back() }, modifier = Modifier.testTag("leaveAnyway")) { Text(tr("Leave")) } },
+        dismissButton = { TextButton(onClick = { ask = false }, modifier = Modifier.testTag("keepWorking")) { Text(tr("Keep working")) } })
+    return { if (unsaved) ask = true else back() }
+}
+
 /** The top row of every screen: back (except on the home screen), the title, then the screen's own buttons. */
 @Composable
 fun TopRow(title: String, back: (() -> Unit)?, actions: @Composable () -> Unit = {}) {
+    // the system's Back does what this row's back does (APP-RULES 170); the home screen leaves the app as usual
+    DisposableEffect(back) {
+        SystemBack.current = back
+        onDispose { if (SystemBack.current === back) SystemBack.current = null }
+    }
     Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         if (back != null) IconButton(onClick = back, modifier = Modifier.testTag("back")) { Icon(Ic.Back, tr("Back")) } else Spacer(Modifier.width(12.dp))
         Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).testTag("title"))

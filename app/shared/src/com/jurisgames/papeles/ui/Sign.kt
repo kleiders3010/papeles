@@ -151,7 +151,7 @@ fun SignScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopRow(tr("Sign: {name}", "name" to doc.name), back)
+        TopRow(tr("Sign: {name}", "name" to doc.name), guardBack(placed.isNotEmpty() && saved == null, back))
         Text(if (placed.isEmpty()) tr("Tap the page where your signature goes.") else tr("{n} placed. Tap again to add another.", "n" to placed.size),
             Modifier.padding(horizontal = 16.dp).testTag("signHint"))
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {

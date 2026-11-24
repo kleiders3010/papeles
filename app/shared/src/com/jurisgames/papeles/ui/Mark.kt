@@ -120,7 +120,7 @@ fun MarkScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopRow(tr("Mark: {name}", "name" to doc.name), back)
+        TopRow(tr("Mark: {name}", "name" to doc.name), guardBack(marks.isNotEmpty() && saved == null, back))
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             for ((t, label) in listOf(MarkTool.Text to tr("Text"), MarkTool.Highlight to tr("Highlight"), MarkTool.Pen to tr("Pen"))) {
                 FilterChip(selected = tool == t, onClick = { tool = t }, label = { Text(label) },

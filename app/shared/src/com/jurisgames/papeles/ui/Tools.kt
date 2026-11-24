@@ -3,7 +3,7 @@ package com.jurisgames.papeles.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +43,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jurisgames.papeles.core.PagePick
@@ -116,6 +118,8 @@ fun JoinScreen(host: Host, worker: Worker, back: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TopRow(tr("Join PDFs"), back)
         if (files.isEmpty()) Hint(tr("Choose the PDFs to join, in order."))
+        // why "Save as PDF" is still greyed with one file (APP-RULES 212)
+        if (files.size == 1) Hint(tr("Add at least one more PDF to join."), "needMore")
         FileList(files, Modifier.weight(1f, fill = false))
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = { host.pickPdfs(true) { files.addAll(it); saved = null } }, modifier = Modifier.testTag("add")) { Text(tr("Add PDFs")) }
@@ -209,7 +213,7 @@ fun PagesScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
         saved = null
     }
     Column(Modifier.fillMaxSize()) {
-        TopRow(tr("Pages: {name}", "name" to doc.name), back)
+        TopRow(tr("Pages: {name}", "name" to doc.name), guardBack(cards.toList() != (1..doc.pages).map { Card(it, 0, it) } && saved == null, back))
         Text(if (chosen.isEmpty()) tr("Tap a page to choose it.") else tr("{n} chosen", "n" to chosen.size),
             Modifier.padding(horizontal = 16.dp).testTag("chosenCount"))
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -227,7 +231,9 @@ fun PagesScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             itemsIndexed(cards, key = { _, c -> c.id }) { i, c ->
                 val on = c.id in chosen
-                Column(Modifier.clickable { if (on) chosen.remove(c.id) else chosen.add(c.id) }.testTag("card-${c.page}"),
+                // a check box to TalkBack: its page and whether it's chosen (APP-RULES 209)
+                Column(Modifier.toggleable(on, role = Role.Checkbox) { if (on) chosen.remove(c.id) else chosen.add(c.id) }
+                    .semantics { contentDescription = tr("Page {n} of {total}", "n" to i + 1, "total" to cards.size) }.testTag("card-${c.page}"),
                     horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(Modifier.fillMaxWidth().aspectRatio(0.75f)
                         .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)

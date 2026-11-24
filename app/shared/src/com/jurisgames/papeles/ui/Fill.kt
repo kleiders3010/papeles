@@ -94,7 +94,7 @@ fun FillScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopRow(tr("Fill: {name}", "name" to doc.name), back)
+        TopRow(tr("Fill: {name}", "name" to doc.name), guardBack(changed().isNotEmpty() && saved == null, back))
         val g = groups
         if (g == null) {
             Text(tr("Reading the form…"), Modifier.padding(16.dp))

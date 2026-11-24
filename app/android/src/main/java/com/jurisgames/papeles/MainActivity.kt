@@ -162,6 +162,16 @@ class MainActivity : ComponentActivity(), Host {
                 }
             }
         }
+        // Back does what the screen's back arrow does (asking first when work isn't saved); on the home screen it leaves
+        // as usual (APP-RULES 170/203: before, Back on any screen closed the app and dropped what was being done)
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                com.jurisgames.papeles.ui.SystemBack.current?.let { it(); return }
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
+        })
     }
 
     override fun onNewIntent(intent: Intent) {
