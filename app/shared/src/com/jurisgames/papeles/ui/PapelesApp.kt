@@ -81,15 +81,29 @@ sealed class Screen {
 class Worker(private val scope: CoroutineScope, private val snack: SnackbarHostState) {
     var busy by mutableStateOf(false)
         private set
+    /** each job's number: Cancel moves it on, so a job that ends after Cancel is dropped (nothing saved, nothing shown) */
+    private var job = 0
 
     fun <T> run(work: () -> T, done: (T) -> Unit) {
         if (busy) return
         busy = true
+        val mine = ++job
         scope.launch {
             val r = withContext(Dispatchers.IO) { runCatching(work) }
+            if (mine != job) return@launch
             busy = false
             r.onSuccess(done).onFailure { lastError = it; say(userError(it)) }
         }
+    }
+
+    /**
+     * APP-RULES 205: a long job (a big PDF made smaller, many pages scanned) has a way out. The engine call can't be
+     * stopped halfway, so it finishes in the background and its result is thrown away: saves happen only in `done`.
+     */
+    fun cancel() {
+        if (!busy) return
+        job++
+        busy = false
     }
 
     companion object {
@@ -158,19 +172,21 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
                 Screen.Scan -> ScanScreen(host, worker, back = { screen = Screen.Home })
                 Screen.Shrink -> ShrinkScreen(host, worker, back = { screen = Screen.Home })
             }
-            if (worker.busy) Busy()
+            if (worker.busy) Busy(worker::cancel)
         }
     }
     locked?.let { p -> PasswordDialog(p.name, wrongPassword, onOpen = { open(p, it) }, onClose = { locked = null; wrongPassword = false }) }
 }
 
 @Composable
-fun Busy() {
+fun Busy(onCancel: () -> Unit = {}) {
     Surface(Modifier.fillMaxSize().testTag("busy"), color = MaterialTheme.colorScheme.background.copy(alpha = 0.6f)) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             CircularProgressIndicator()
             Spacer(Modifier.height(12.dp))
             Text(tr("Working…"))
+            Spacer(Modifier.height(12.dp))
+            androidx.compose.material3.OutlinedButton(onClick = onCancel, modifier = Modifier.testTag("busyCancel")) { Text(tr("Cancel")) }
         }
     }
 }
