@@ -26,6 +26,18 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="content" android:mimeType="application/pdf" />
             </intent-filter>
+            <!-- "Share" from WhatsApp, Gmail or the Gallery: a PDF opens, photos become pages (U-P7) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
         </activity>
         <!-- the system camera app writes a scanned page's photo into the app's cache through this (no camera permission) -->
         <provider

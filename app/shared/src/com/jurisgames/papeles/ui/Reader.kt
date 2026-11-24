@@ -1,5 +1,6 @@
 package com.jurisgames.papeles.ui
 
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -92,10 +93,15 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
     LaunchedEffect(doc) {
         hasForm = withContext(Dispatchers.IO) { runCatching { fillable(formFields(PdfInput(doc.bytes, doc.password))) }.getOrDefault(false) }
     }
-    val list = rememberLazyListState()
+    // opens where it was last read (U-P11), and remembers the page as it changes
+    val list = rememberLazyListState(initialFirstVisibleItemIndex = remember(doc) { (LastPage.get(host.appFiles, doc.key) - 1).coerceIn(0, maxOf(0, doc.pages - 1)) })
+    LaunchedEffect(doc) {
+        snapshotFlow { list.firstVisibleItemIndex + 1 }.collect { withContext(Dispatchers.IO) { LastPage.set(host.appFiles, doc.key, it) } }
+    }
     val scope = rememberCoroutineScope()
     var searching by remember { mutableStateOf(false) }
     var more by remember { mutableStateOf(false) }
+    var goTo by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var hits by remember { mutableStateOf<List<Hit>?>(null) }
     var at by remember { mutableStateOf(0) }
@@ -115,7 +121,7 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
     fun find() {
         val q = query.trim()
         if (q.isEmpty()) return
-        worker.run({ doc.file.search(q, MAX_HITS) }) { hits = it; show(0) }
+        worker.run({ doc.file.search(q, MAX_HITS) }, tr("Searching…")) { hits = it; show(0) }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -197,13 +203,33 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
             }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(tr("Page {n} of {total}", "n" to first, "total" to doc.pages), style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.weight(1f).padding(start = 12.dp).testTag("pageOf"))
+            Box(Modifier.weight(1f)) {
+                androidx.compose.material3.TextButton(onClick = { goTo = true }, enabled = doc.pages > 1, modifier = Modifier.testTag("pageOf")) {
+                    Text(tr("Page {n} of {total}", "n" to first, "total" to doc.pages), style = MaterialTheme.typography.labelMedium)
+                }
+            }
             IconButton(onClick = { zoomBy(false) }, enabled = zoom > ZOOMS.first() + 0.01f, modifier = Modifier.testTag("zoomOut")) { Icon(Ic.ZoomOut, tr("Zoom out")) }
             Text("${(zoom * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("zoomLevel"))
             IconButton(onClick = { zoomBy(true) }, enabled = zoom < ZOOMS.last() - 0.01f, modifier = Modifier.testTag("zoomIn")) { Icon(Ic.ZoomIn, tr("Zoom in")) }
         }
     }
+    if (goTo) GoToPage(doc.pages, onClose = { goTo = false }) { n -> goTo = false; scope.launch { list.scrollToItem(n - 1) } }
+}
+
+/** "Go to page": a number from 1 to [pages]; Go is greyed until it is one (U-P12). */
+@Composable
+private fun GoToPage(pages: Int, onClose: () -> Unit, go: (Int) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    val n = text.trim().toIntOrNull()?.takeIf { it in 1..pages }
+    androidx.compose.material3.AlertDialog(onDismissRequest = onClose, title = { Text(tr("Go to page")) },
+        text = {
+            OutlinedTextField(text, { text = it.filter(Char::isDigit).take(6) }, Modifier.testTag("pageNumber"), singleLine = true,
+                label = { Text(tr("Page (1 to {total})", "total" to pages)) },
+                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number, imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = { n?.let(go) }))
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { n?.let(go) }, enabled = n != null, modifier = Modifier.testTag("goPage")) { Text(tr("Go")) } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onClose) { Text(tr("Cancel")) } })
 }
 
 /** A tool in the reader's row: its icon and its name (U-P2). */
@@ -238,7 +264,9 @@ private fun PageThumb(doc: OpenDoc, host: Host, n: Int, box: PageBox, current: B
 
 @Composable
 private fun PageView(doc: OpenDoc, host: Host, n: Int, box: PageBox, shown: Dp, width: Int, marks: List<Hit>, current: Hit?) {
-    var img by remember(doc, n, width) { mutableStateOf<ImageBitmap?>(null) }
+    // U-P10: the picture is kept across a zoom step (not keyed on width) and stretched until the sharper one is ready;
+    // keyed on width, each 256 px step dropped it and the page flashed white many times during one pinch
+    var img by remember(doc, n) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(doc, n, width) {
         img = withContext(Dispatchers.IO) { runCatching { host.image(doc.file.render(n.toUInt(), width)) }.getOrNull() }
     }

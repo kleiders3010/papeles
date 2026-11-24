@@ -43,3 +43,24 @@ object Recent {
         return load(dir)
     }
 }
+
+/** The page each file was last read on (U-P11), kept for the files in Recent only. */
+object LastPage {
+    private fun file(dir: File) = File(dir, "pages.tsv")
+
+    fun load(dir: File): Map<String, Int> = runCatching {
+        file(dir).readLines().mapNotNull { l -> l.split('\t').takeIf { it.size == 2 }?.let { (k, n) -> n.toIntOrNull()?.let { k to it } } }.toMap()
+    }.getOrDefault(emptyMap())
+
+    fun get(dir: File, key: String): Int = load(dir)[key] ?: 1
+
+    fun set(dir: File, key: String, page: Int) {
+        val keep = Recent.load(dir).map { it.key }.toSet()
+        val all = (load(dir) + (key to page)).filterKeys { it in keep || it == key }
+        runCatching {
+            val tmp = File(dir, "pages.tsv.tmp")
+            tmp.writeText(all.entries.joinToString("") { "${it.key.replace('\t', ' ').replace('\n', ' ')}\t${it.value}\n" })
+            if (!tmp.renameTo(file(dir))) { file(dir).delete(); tmp.renameTo(file(dir)) }
+        }
+    }
+}

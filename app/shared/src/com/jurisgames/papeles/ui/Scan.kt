@@ -104,7 +104,7 @@ fun ScanScreen(host: Host, worker: Worker, back: () -> Unit) {
     fun save() {
         val list = items.map { Triple(it.photo, it.corners.map { c -> PhotoPoint(c.x, c.y) }, it.look) }
         val p = paper
-        worker.run({ picturesToPdf(list.map { (b, c, l) -> scanPage(b, c, l) }, p) }) { bytes ->
+        worker.run({ picturesToPdf(list.map { (b, c, l) -> scanPage(b, c, l) }, p) }, tr("Making the PDF…")) { bytes ->
             host.save(scanName(), bytes) { saved = it }
         }
     }

@@ -1,5 +1,8 @@
 package com.jurisgames.papeles.ui
 
+import kotlinx.coroutines.sync.withLock
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -87,12 +90,20 @@ class Worker(private val scope: CoroutineScope, private val snack: SnackbarHostS
     /** each job's number: Cancel moves it on, so a job that ends after Cancel is dropped (nothing saved, nothing shown) */
     private var job = 0
 
-    fun <T> run(work: () -> T, done: (T) -> Unit) {
+    /** What the running job is doing, in words ("Joining the PDFs…"); "Working…" when the caller doesn't say. */
+    var doing by mutableStateOf("")
+        private set
+    /** one engine job at a time: a job started after a Cancel waits (spinner showing) for the cancelled one to finish,
+     * so two big PDFs are never in memory together (U-P18), and its own result still arrives (WorkerCancelTest) */
+    private val one = kotlinx.coroutines.sync.Mutex()
+
+    fun <T> run(work: () -> T, what: String = "", done: (T) -> Unit) {
         if (busy) return
         busy = true
+        doing = what
         val mine = ++job
         scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching(work) }
+            val r = one.withLock { withContext(Dispatchers.IO) { runCatching(work) } }
             if (mine != job) return@launch
             busy = false
             r.onSuccess(done).onFailure { lastError = it; say(userError(it)) }
@@ -115,13 +126,14 @@ class Worker(private val scope: CoroutineScope, private val snack: SnackbarHostS
     }
 
     fun say(text: String) {
-        scope.launch { snack.showSnackbar(text) }
+        scope.launch { snack.showSnackbar(text, duration = androidx.compose.material3.SnackbarDuration.Long) }
     }
 }
 
 /** `incoming`: a PDF handed to the app from outside ("Open with"); opened once, then `onIncomingDone`. */
 @Composable
-fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit = {}, onTheme: (DarkMode) -> Unit) {
+fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit = {}, pictures: List<Picked> = emptyList(),
+               onPicturesDone: () -> Unit = {}, onTheme: (DarkMode) -> Unit) {
     val scope = rememberCoroutineScope()
     val snack = remember { SnackbarHostState() }
     val worker = remember { Worker(scope, snack) }
@@ -131,6 +143,8 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
     var wrongPassword by remember { mutableStateOf(false) }
     // the tool a home entry goes into once its file opens ("sign", "fill", "mark", "pages"; "" = the reader)
     var into by remember { mutableStateOf("") }
+    // photos shared to the app (U-P7): Pictures to PDF starts with them
+    var sharedPictures by remember { mutableStateOf<List<Picked>>(emptyList()) }
 
     fun close(s: Screen) {
         // every screen holding a file: Open on a tool's saved row leaves it for the new one
@@ -148,7 +162,7 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
                 // "Fill in a form" on a paper with no fields to fill: typing on it (Mark's text) instead
                 doc to (tool == "fill" && runCatching { fillable(formFields(PdfInput(bytes, password))) }.getOrDefault(false))
             }
-        }) { r ->
+        }, tr("Opening {name}…", "name" to p.name)) { r ->
             r.onSuccess { (doc, form) ->
                 locked = null
                 into = ""
@@ -165,6 +179,14 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
                 if (e is PpException.Password) { wrongPassword = password != null; locked = p } else { into = ""; worker.say(userError(e)) }
             }
         }
+    }
+
+    LaunchedEffect(pictures) {
+        if (pictures.isEmpty()) return@LaunchedEffect
+        sharedPictures = pictures
+        close(screen)
+        screen = Screen.Pictures
+        onPicturesDone()
     }
 
     LaunchedEffect(incoming) {
@@ -219,11 +241,11 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
                 is Screen.Fill -> FillScreen(s.doc, host, worker, back = { screen = Screen.Reader(s.doc) })
                 is Screen.Pages -> PagesScreen(s.doc, host, worker, back = { screen = Screen.Reader(s.doc) })
                 Screen.Join -> JoinScreen(host, worker, back = { screen = Screen.Home })
-                Screen.Pictures -> PicturesScreen(host, worker, back = { screen = Screen.Home })
+                Screen.Pictures -> PicturesScreen(host, worker, back = { sharedPictures = emptyList(); screen = Screen.Home }, start = sharedPictures)
                 Screen.Scan -> ScanScreen(host, worker, back = { screen = Screen.Home })
                 Screen.Shrink -> ShrinkScreen(host, worker, back = { screen = Screen.Home })
             }
-            if (worker.busy) Busy(worker::cancel)
+            if (worker.busy) Busy(worker.doing, worker::cancel)
         }
     }
     } // LocalOpen
@@ -231,12 +253,12 @@ fun PapelesApp(host: Host, incoming: Picked? = null, onIncomingDone: () -> Unit 
 }
 
 @Composable
-fun Busy(onCancel: () -> Unit = {}) {
+fun Busy(what: String = "", onCancel: () -> Unit = {}) {
     Surface(Modifier.fillMaxSize().testTag("busy"), color = MaterialTheme.colorScheme.background.copy(alpha = 0.6f)) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             CircularProgressIndicator()
             Spacer(Modifier.height(12.dp))
-            Text(tr("Working…"))
+            Text(what.ifEmpty { tr("Working…") }, modifier = Modifier.testTag("busyWhat"))
             Spacer(Modifier.height(12.dp))
             androidx.compose.material3.OutlinedButton(onClick = onCancel, modifier = Modifier.testTag("busyCancel")) { Text(tr("Cancel")) }
         }
@@ -350,8 +372,9 @@ private fun SettingsDialog(host: Host, onTheme: (DarkMode) -> Unit, onClose: () 
             Column {
                 Text(tr("Appearance"), style = MaterialTheme.typography.titleSmall)
                 for (m in DarkMode.entries) {
-                    Row(Modifier.fillMaxWidth().clickable { mode = m; setDarkMode(host.appFiles, m); onTheme(m) }.testTag("dark-" + m.key),
-                        verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .selectable(mode == m, role = androidx.compose.ui.semantics.Role.RadioButton) { mode = m; setDarkMode(host.appFiles, m); onTheme(m) }
+                        .testTag("dark-" + m.key), verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(mode == m, null)
                         Text(tr(m.label))
                     }

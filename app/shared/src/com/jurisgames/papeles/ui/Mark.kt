@@ -116,7 +116,7 @@ fun MarkScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
 
     fun save() {
         val all = marks.toList()
-        worker.run({ addMarks(PdfInput(doc.bytes, doc.password), all) }) { bytes ->
+        worker.run({ addMarks(PdfInput(doc.bytes, doc.password), all) }, tr("Adding the marks…")) { bytes ->
             host.save(nameWith(doc.name, tr("marked")), bytes) { saved = it }
         }
     }

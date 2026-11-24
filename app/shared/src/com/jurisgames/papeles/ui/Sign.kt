@@ -147,7 +147,7 @@ fun SignScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
         val i = ink ?: return
         val lines = i.map { l -> InkLine(l.map { InkPoint(it.x, it.y) }) }
         val at = placed.map { StampAt(it.page.toUInt(), Area(it.x, it.y, it.w, it.h)) }
-        worker.run({ stampPictures(PdfInput(doc.bytes, doc.password), at, inkPicture(lines, PEN)) }) { bytes ->
+        worker.run({ stampPictures(PdfInput(doc.bytes, doc.password), at, inkPicture(lines, PEN)) }, tr("Adding the signature…")) { bytes ->
             host.save(nameWith(doc.name, tr("signed")), bytes) { saved = it }
         }
     }

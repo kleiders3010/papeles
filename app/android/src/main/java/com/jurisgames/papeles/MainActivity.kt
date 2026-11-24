@@ -37,6 +37,9 @@ import java.nio.ByteBuffer
 /** How many files handed in by other apps are kept as copies (for the Recent list); older copies are deleted. */
 private const val KEPT = 10
 
+/** Lasting grants held before the ones no longer in Recent are let go: under Android's oldest cap (128). */
+private const val GRANTS_PRUNE_AT = 100
+
 class MainActivity : ComponentActivity(), Host {
     override val appFiles: File get() = filesDir
 
@@ -47,6 +50,9 @@ class MainActivity : ComponentActivity(), Host {
 
     /** A PDF handed to the app ("Open with"), opened once the screen is up. */
     private var incoming by mutableStateOf<Picked?>(null)
+
+    /** Photos shared to the app (Gallery "Share"): Pictures to PDF starts with them. */
+    private var incomingPictures by mutableStateOf<List<Picked>>(emptyList())
 
     private val pickOne = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         deliver(onPdfs, listOfNotNull(uri)); onPdfs = null
@@ -96,8 +102,21 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     private fun deliver(to: ((List<Picked>) -> Unit)?, uris: List<Uri>) {
+        prune()
         for (u in uris) runCatching { contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         to?.invoke(uris.map(::picked))
+    }
+
+    /**
+     * U-P28: Android keeps at most 128 lasting grants per app (512 from Android 11; AOSP UriGrantsManagerService, checked
+     * 2026-11-24: https://commonsware.com/blog/2020/06/13/count-your-saf-uri-permission-grants.html); past that new ones
+     * fail without a word and Recent stops reopening files. Near the cap, grants for files no longer in Recent go.
+     */
+    private fun prune() = runCatching {
+        val held = contentResolver.persistedUriPermissions
+        if (held.size < GRANTS_PRUNE_AT) return@runCatching
+        val keep = com.jurisgames.papeles.ui.Recent.load(filesDir).map { it.key }.toSet()
+        for (g in held) if (g.uri.toString() !in keep) contentResolver.releasePersistableUriPermission(g.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
 
     private fun nameOf(uri: Uri): String = runCatching {
@@ -178,8 +197,19 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     private fun take(intent: Intent?) {
-        val uri = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data ?: return
-        incoming = kept(uri)
+        intent ?: return
+        when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data?.let { incoming = kept(it) }
+            Intent.ACTION_SEND -> {
+                val uri = androidx.core.content.IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java) ?: return
+                val type = intent.type ?: contentResolver.getType(uri) ?: ""
+                if (type.startsWith("image/")) incomingPictures = listOf(picked(uri)) else incoming = kept(uri)
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                val uris = androidx.core.content.IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java) ?: return
+                incomingPictures = uris.map(::picked)
+            }
+        }
     }
 
     /**
@@ -229,7 +259,8 @@ class MainActivity : ComponentActivity(), Host {
             // The family's own blue, not wallpaper colors: the app looks the same on every phone and in the store pictures.
             AppTheme(mode) {
                 Box(Modifier.fillMaxSize().safeDrawingPadding()) {
-                    PapelesApp(this@MainActivity, incoming = incoming, onIncomingDone = { incoming = null }) { mode = it }
+                    PapelesApp(this@MainActivity, incoming = incoming, onIncomingDone = { incoming = null },
+                        pictures = incomingPictures, onPicturesDone = { incomingPictures = emptyList() }) { mode = it }
                 }
             }
         }

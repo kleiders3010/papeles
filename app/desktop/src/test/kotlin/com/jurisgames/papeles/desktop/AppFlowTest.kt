@@ -161,7 +161,8 @@ class AppFlowTest {
         // the recent list survives a restart (it lives in a file)
         assertTrue(File(host.appFiles, "recent.tsv").readText().contains("cats.pdf"))
         onNodeWithTag("recent-cats.pdf").performClick()
-        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("page-1")).fetchSemanticsNodes().isNotEmpty() }
+        // it opens where it was last read (U-P11: the second hit, on page 3), so wait for the reader, not page 1
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("pageOf")).fetchSemanticsNodes().isNotEmpty() }
         onNodeWithTag("back").performClick()
         onNodeWithTag("forget-cats.pdf").performClick()
         onNodeWithTag("noRecent").assertExists()
@@ -560,6 +561,74 @@ class AppFlowTest {
         openPdf(host.saved[2].second, null).use { assertTrue(it.text(1u).contains("page three")) }
         onNodeWithTag("card-3").performClick() // two chosen: no split
         onNodeWithTag("splitAfter").assertIsNotEnabled()
+    }
+
+    /** U-P12 + U-P11 guard: "Page n of N" opens Go to page; reopening the file starts where it was read */
+    @Test
+    fun go_to_page_and_reopen_where_it_was() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("five.pdf", textPdf("p1", "p2", "p3", "p4", "p5")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("pageOf")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("pageOf").performClick()
+        onNodeWithTag("goPage").assertIsNotEnabled()
+        onNodeWithTag("pageNumber").performTextInput("9") // past the last page: Go stays greyed
+        onNodeWithTag("goPage").assertIsNotEnabled()
+        onNodeWithTag("pageNumber").performTextClearance()
+        onNodeWithTag("pageNumber").performTextInput("4")
+        onNodeWithTag("goPage").assertIsEnabled().performClick()
+        waitUntil(timeoutMillis = 5_000) { runCatching { onNodeWithTag("pageOf").assertTextContains("Page 4 of 5") }.isSuccess }
+        onNodeWithTag("back").performClick()
+        onNodeWithTag("recent-five.pdf").performClick()
+        waitUntil(timeoutMillis = 10_000) { runCatching { onNodeWithTag("pageOf").assertTextContains("Page 4 of 5") }.isSuccess }
+    }
+
+    /** U-P13 guard: a Delete in Edit pages can be undone, the page back where it was */
+    @Test
+    fun deleted_pages_come_back_with_undo() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("three.pdf", textPdf("page one", "page two", "page three")))
+        onNodeWithTag("homePages").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("card-2")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("card-2").performClick()
+        onNodeWithTag("deletePages").performClick()
+        onNodeWithTag("card-2").assertDoesNotExist()
+        onNodeWithTag("undoDelete").performClick()
+        onNodeWithTag("card-2").assertExists()
+        onNodeWithTag("make").performClick()
+        waitUntil(timeoutMillis = 10_000) { host.saved.isNotEmpty() }
+        assertEquals(3, pages(host.saved.single().second)) // pinned: all three pages back
+        openPdf(host.saved.single().second, null).use { assertTrue(it.text(2u).contains("page two")) }
+    }
+
+    /** U-P7 guard: photos shared to the app start Pictures to PDF with them */
+    @Test
+    fun shared_photos_start_pictures_to_pdf() = runComposeUiTest {
+        val host = FakeHost()
+        val photo = host.file("photo.png", png(300, 200))
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host, pictures = listOf(photo)) {} } }
+        waitUntil(timeoutMillis = 5_000) { onAllNodes(hasTestTag("file-0")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithText("1. photo.png").assertExists()
+    }
+
+    /** U-P19 guard: a locked PDF in Join asks for its password, then joins (it only said "locked with a password") */
+    @Test
+    fun join_asks_for_a_locked_files_password() = runComposeUiTest {
+        val host = FakeHost()
+        val locked = javaClass.getResourceAsStream("/locked-gato.pdf")!!.readBytes() // pypdf AES-128, password "gato"
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        onNodeWithTag("join").performClick()
+        host.pdfs += listOf(host.file("open.pdf", textPdf("page one")), host.file("locked.pdf", locked))
+        onNodeWithTag("add").performClick()
+        onNodeWithTag("make").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("pwField")).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(host.saved.isEmpty())
+        onNodeWithTag("pwField").performTextInput("gato")
+        onNodeWithTag("pwOpen").performClick()
+        waitUntil(timeoutMillis = 10_000) { host.saved.isNotEmpty() }
+        assertEquals(2, pages(host.saved.single().second)) // pinned: one page from each file
     }
 
     /** U-P22 guard: with the search box or Mark's text bar open, Back closes that first (it closed the whole PDF) */

@@ -88,7 +88,7 @@ fun FillScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
     }.toMap()
     fun save() {
         val c = changed()
-        worker.run({ fillForm(input, c) }) { bytes ->
+        worker.run({ fillForm(input, c) }, tr("Filling in the form…")) { bytes ->
             host.save(nameWith(doc.name, tr("filled")), bytes) { saved = it }
         }
     }

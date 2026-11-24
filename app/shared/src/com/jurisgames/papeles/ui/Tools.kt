@@ -1,5 +1,6 @@
 package com.jurisgames.papeles.ui
 
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -56,6 +57,8 @@ import com.jurisgames.papeles.core.arrange
 import com.jurisgames.papeles.core.merge
 import com.jurisgames.papeles.core.picturesToPdf
 import com.jurisgames.papeles.core.shrink
+import com.jurisgames.papeles.core.openPdf
+import com.jurisgames.papeles.core.PpException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -107,7 +110,7 @@ private fun FileList(files: MutableList<Picked>, modifier: Modifier) {
 internal fun <T> Choice(options: List<Triple<T, String, String>>, chosen: T, tagPrefix: String, pick: (T) -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp)) {
         for ((value, label, about) in options) {
-            Row(Modifier.fillMaxWidth().selectable(chosen == value, role = Role.RadioButton) { pick(value) }.padding(vertical = 4.dp)
+            Row(Modifier.fillMaxWidth().selectable(chosen == value, role = Role.RadioButton) { pick(value) }.heightIn(min = 48.dp).padding(vertical = 4.dp)
                 .testTag("$tagPrefix-$value"), verticalAlignment = Alignment.CenterVertically) {
                 RadioButton(chosen == value, null)
                 Column(Modifier.padding(start = 8.dp)) {
@@ -123,6 +126,24 @@ internal fun <T> Choice(options: List<Triple<T, String, String>>, chosen: T, tag
 fun JoinScreen(host: Host, worker: Worker, back: () -> Unit) {
     val files = remember { mutableStateListOf<Picked>() }
     var saved by remember { mutableStateOf<Picked?>(null) }
+    val passwords = remember { androidx.compose.runtime.mutableStateMapOf<String, String>() }
+    var asking by remember { mutableStateOf<Picked?>(null) }
+    fun make() {
+        val list = files.toList()
+        val pws = passwords.toMap()
+        worker.run({
+            val read = list.map { it to it.read() }
+            // the first locked file whose password isn't known yet (or was wrong) is asked for; nothing is joined
+            read.firstOrNull { (p, b) -> lockedWith(b, pws[p.key]) }?.first to
+                (if (read.any { (p, b) -> lockedWith(b, pws[p.key]) }) null else merge(read.map { (p, b) -> PdfInput(b, pws[p.key]) }))
+        }, tr("Joining the PDFs…")) { (locked, bytes) ->
+            if (locked != null) asking = locked
+            else if (bytes != null) host.save(nameWith(list.first().name, tr("joined")), bytes) { saved = it }
+        }
+    }
+    asking?.let { p ->
+        PasswordDialog(p.name, passwords.containsKey(p.key), onOpen = { passwords[p.key] = it; asking = null; make() }, onClose = { asking = null })
+    }
     Column(Modifier.fillMaxSize()) {
         TopRow(tr("Join PDFs"), back)
         if (files.isEmpty()) Hint(tr("Choose the PDFs to join, in order."))
@@ -131,20 +152,15 @@ fun JoinScreen(host: Host, worker: Worker, back: () -> Unit) {
         FileList(files, Modifier.weight(1f, fill = false))
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = { host.pickPdfs(true) { files.addAll(it); saved = null } }, modifier = Modifier.testTag("add")) { Text(tr("Add PDFs")) }
-            Button(onClick = {
-                val list = files.toList()
-                worker.run({ merge(list.map { PdfInput(it.read(), null) }) }) { bytes ->
-                    host.save(nameWith(list.first().name, tr("joined")), bytes) { saved = it }
-                }
-            }, enabled = files.size >= 2, modifier = Modifier.testTag("make")) { Text(tr("Save as PDF")) }
+            Button(onClick = { make() }, enabled = files.size >= 2, modifier = Modifier.testTag("make")) { Text(tr("Save as PDF")) }
         }
         SavedRow(host, saved)
     }
 }
 
 @Composable
-fun PicturesScreen(host: Host, worker: Worker, back: () -> Unit) {
-    val files = remember { mutableStateListOf<Picked>() }
+fun PicturesScreen(host: Host, worker: Worker, back: () -> Unit, start: List<Picked> = emptyList()) {
+    val files = remember(start) { mutableStateListOf<Picked>().apply { addAll(start) } }
     var paper by remember { mutableStateOf(Paper.A4) }
     var saved by remember { mutableStateOf<Picked?>(null) }
     Column(Modifier.fillMaxSize()) {
@@ -158,7 +174,7 @@ fun PicturesScreen(host: Host, worker: Worker, back: () -> Unit) {
             Button(onClick = {
                 val list = files.toList()
                 val p = paper
-                worker.run({ picturesToPdf(list.map { it.read() }, p) }) { bytes ->
+                worker.run({ picturesToPdf(list.map { it.read() }, p) }, tr("Making the PDF…")) { bytes ->
                     host.save(list.first().name.substringBeforeLast('.') + ".pdf", bytes) { saved = it }
                 }
             }, enabled = files.isNotEmpty(), modifier = Modifier.testTag("make")) { Text(tr("Save as PDF")) }
@@ -170,9 +186,30 @@ fun PicturesScreen(host: Host, worker: Worker, back: () -> Unit) {
 @Composable
 fun ShrinkScreen(host: Host, worker: Worker, back: () -> Unit) {
     var file by remember { mutableStateOf<Picked?>(null) }
+    var password by remember { mutableStateOf<String?>(null) }
+    var asking by remember { mutableStateOf(false) }
     var level by remember { mutableStateOf(ShrinkLevel.MEDIUM) }
     var saved by remember { mutableStateOf<Picked?>(null) }
     var sizes by remember { mutableStateOf("") }
+    fun shrinkIt() {
+                val src = file ?: return
+                val l = level
+                val pw = password
+        worker.run({
+            val b = src.read()
+            // a locked file: its password is asked for, then the same job runs again
+            if (lockedWith(b, pw)) null else b.size to shrink(PdfInput(b, pw), l)
+        }, tr("Making it smaller…")) { got ->
+            if (got == null) { asking = true; return@run }
+            val (before, r) = got
+                    if (r.bytes.size >= before) worker.say(tr("This PDF is already as small as it gets here."))
+                    else host.save(nameWith(src.name, tr("smaller")), r.bytes) {
+                        saved = it
+                        sizes = tr("{before} → {after}", "before" to sizeLabel(before.toLong()), "after" to sizeLabel(r.bytes.size.toLong()))
+                    }
+                }
+    }
+    if (asking) PasswordDialog(file?.name ?: "", password != null, onOpen = { password = it; asking = false; shrinkIt() }, onClose = { asking = false })
     Column(Modifier.fillMaxSize()) {
         TopRow(tr("Make smaller"), back)
         val f = file
@@ -183,18 +220,8 @@ fun ShrinkScreen(host: Host, worker: Worker, back: () -> Unit) {
             Triple(ShrinkLevel.LIGHT, tr("Light touch"), tr("Barely changes how pictures look.")),
         ), level, "level") { level = it }
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = { host.pickPdfs(false) { it.firstOrNull()?.let { p -> file = p; saved = null } } }, modifier = Modifier.testTag("add")) { Text(tr("Choose a PDF")) }
-            Button(onClick = {
-                val src = f ?: return@Button
-                val l = level
-                worker.run({ val b = src.read(); b.size to shrink(PdfInput(b, null), l) }) { (before, r) ->
-                    if (r.bytes.size >= before) worker.say(tr("This PDF is already as small as it gets here."))
-                    else host.save(nameWith(src.name, tr("smaller")), r.bytes) {
-                        saved = it
-                        sizes = tr("{before} → {after}", "before" to sizeLabel(before.toLong()), "after" to sizeLabel(r.bytes.size.toLong()))
-                    }
-                }
-            }, enabled = f != null, modifier = Modifier.testTag("make")) { Text(tr("Save as PDF")) }
+            OutlinedButton(onClick = { host.pickPdfs(false) { it.firstOrNull()?.let { p -> file = p; password = null; saved = null } } }, modifier = Modifier.testTag("add")) { Text(tr("Choose a PDF")) }
+            Button(onClick = { shrinkIt() }, enabled = f != null, modifier = Modifier.testTag("make")) { Text(tr("Save as PDF")) }
         }
         SavedRow(host, saved, sizes)
     }
@@ -210,6 +237,8 @@ fun PagesScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
     val cards = remember(doc) { mutableStateListOf<Card>().apply { addAll((1..doc.pages).map { Card(it, 0, it) }) } }
     val chosen = remember(doc) { mutableStateListOf<Int>() } // card ids
     var saved by remember { mutableStateOf<Picked?>(null) }
+    // the pages the last Delete took, with where each was, for Undo
+    var deleted by remember(doc) { mutableStateOf<List<Pair<Int, Card>>>(emptyList()) }
     fun turn(by: Int) {
         for (i in cards.indices) if (cards[i].id in chosen) cards[i] = cards[i].copy(turn = (cards[i].turn + by + 360) % 360)
         saved = null
@@ -233,8 +262,14 @@ fun PagesScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
             }
             IconButton(onClick = { move(-1) }, enabled = chosen.size == 1, modifier = Modifier.testTag("moveUp")) { Icon(Ic.Up, tr("Move up")) }
             IconButton(onClick = { move(1) }, enabled = chosen.size == 1, modifier = Modifier.testTag("moveDown")) { Icon(Ic.Down, tr("Move down")) }
-            IconButton(onClick = { cards.removeAll { it.id in chosen }; chosen.clear(); saved = null },
-                enabled = any && chosen.size < cards.size, modifier = Modifier.testTag("deletePages")) { Icon(Ic.Delete, tr("Delete page")) }
+            IconButton(onClick = {
+                deleted = cards.withIndex().filter { it.value.id in chosen }.map { it.index to it.value }
+                cards.removeAll { it.id in chosen }; chosen.clear(); saved = null
+            }, enabled = any && chosen.size < cards.size, modifier = Modifier.testTag("deletePages")) { Icon(Ic.Delete, tr("Delete page")) }
+            if (deleted.isNotEmpty()) TextButton(onClick = {
+                for ((i, c) in deleted) cards.add(i.coerceAtMost(cards.size), c)
+                deleted = emptyList(); saved = null
+            }, modifier = Modifier.testTag("undoDelete")) { Text(tr("Undo")) }
         }
         LazyVerticalGrid(GridCells.Adaptive(120.dp), Modifier.weight(1f).testTag("grid"), contentPadding = PaddingValues(12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -256,7 +291,7 @@ fun PagesScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
         Row(Modifier.padding(16.dp)) {
             Button(onClick = {
                 val picks = cards.map { PagePick(0u, it.page.toUInt(), it.turn.toLong()) }
-                worker.run({ arrange(listOf(PdfInput(doc.bytes, doc.password)), picks) }) { bytes ->
+                worker.run({ arrange(listOf(PdfInput(doc.bytes, doc.password)), picks) }, tr("Making the PDF…")) { bytes ->
                     host.save(nameWith(doc.name, tr("edited")), bytes) { saved = it }
                 }
             }, modifier = Modifier.testTag("make")) { Text(tr("Save as PDF")) }
@@ -268,7 +303,7 @@ fun PagesScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
             // only the chosen pages, in the order shown, as a new PDF
             OutlinedButton(onClick = {
                 val picks = order.filter { it.id in chosen }.map { PagePick(0u, it.page.toUInt(), it.turn.toLong()) }
-                worker.run({ arrange(listOf(PdfInput(doc.bytes, doc.password)), picks) }) { bytes ->
+                worker.run({ arrange(listOf(PdfInput(doc.bytes, doc.password)), picks) }, tr("Making the PDF…")) { bytes ->
                     host.save(nameWith(doc.name, tr("chosen pages")), bytes) { saved = it }
                 }
             }, enabled = chosen.isNotEmpty(), modifier = Modifier.testTag("keepChosen")) { Text(tr("Save chosen pages as a new PDF")) }
@@ -298,3 +333,7 @@ private fun Thumb(doc: OpenDoc, host: Host, page: Int, turn: Int) {
     }
     img?.let { Image(it, null, Modifier.rotate(turn.toFloat()).background(Color.White)) }
 }
+
+/** True when [bytes] is a PDF that [password] doesn't open (none given, or a wrong one). */
+internal fun lockedWith(bytes: ByteArray, password: String?): Boolean =
+    runCatching { openPdf(bytes, password).close() }.exceptionOrNull() is PpException.Password
