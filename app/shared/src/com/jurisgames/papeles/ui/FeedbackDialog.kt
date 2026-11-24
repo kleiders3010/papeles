@@ -71,7 +71,7 @@ object Feedback {
             val vm = System.getProperty("java.vm.name") ?: ""
             val platform = if (vm.contains("Dalvik", true) || vm.contains("ART", false)) "android" else "desktop"
             append(",\n  \"details\": {\n    \"platform\": ${str(platform)},\n")
-            append("    \"system\": ${str("${System.getProperty("os.name")} ${System.getProperty("os.version")}")},\n")
+            append("    \"system\": ${str(systemName())},\n")
             append("    \"diagnostics\": [\n")
             append(details.trimEnd().lines().joinToString(",\n") { "      " + str(it) })
             append("\n    ]\n  }")
@@ -171,4 +171,15 @@ object AppInfo {
     @Volatile var version: String = ""
     @Volatile var engine: String = "not started"
     fun diagnostics(): String = listOf("app: Papeles $version", "reader: $engine", "language: " + (if (Lang.spanish) "es" else "en")).joinToString("\n")
+}
+
+/**
+ * The system by its release only ("Android 15", "Windows 11"), never os.version: on Android that is the kernel build
+ * string, which narrows down the phone (Toma safety audit TM-5, 2026-11-24; APP-RULES 85).
+ */
+internal fun systemName(): String {
+    val vm = System.getProperty("java.vm.name") ?: ""
+    if (!(vm.contains("Dalvik", true) || vm.contains("ART", false))) return System.getProperty("os.name", "?")
+    val release = runCatching { Class.forName("android.os.Build\$VERSION").getField("RELEASE").get(null) as String }.getOrNull()
+    return "Android " + (release ?: "?")
 }

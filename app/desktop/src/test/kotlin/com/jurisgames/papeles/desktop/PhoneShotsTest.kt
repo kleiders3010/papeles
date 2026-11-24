@@ -141,7 +141,14 @@ class PhoneShotsTest {
     }
 
     @Test
-    fun phone() = runDesktopComposeUiTest(width = if (store) 1080 else 412, height = if (store) 1920 else 860) {
+    fun phone() = flow(if (store) 1080 else 412, if (store) 1920 else 860, fit = false)
+
+    /** APP-RULES 196: the same screens on a small phone (360 dp), every fixed button wholly on screen (PhoneFit.kt). */
+    @Test
+    fun everyButtonFitsASmallPhone() { if (!store) flow(360, 760, fit = true) }
+
+    private fun flow(w: Int, h: Int, fit: Boolean) = runDesktopComposeUiTest(width = w, height = h) {
+        val problems = mutableListOf<String>()
         val host = FakeHost()
         SignatureStore.save(host.appFiles, signature())
         val leaseName = if (es) "contrato.pdf" else "lease.pdf"
@@ -152,6 +159,7 @@ class PhoneShotsTest {
             else body()
         }
         fun shot(name: String) {
+            if (fit) { problems += buttonsFit(w, name, OPEN_LISTS[name] ?: 0); return }
             val o = out ?: return
             waitForIdle()
             val roots = onAllNodes(isRoot())
@@ -226,5 +234,10 @@ class PhoneShotsTest {
         waitUntil(timeoutMillis = 15_000) { onAllNodes(hasTestTag("scanPhoto")).fetchSemanticsNodes().isNotEmpty() }
         mainClock.advanceTimeBy(1_000)
         shot("6-scan")
+        check(problems.isEmpty()) { problems.joinToString("\n") }
     }
+
+    // sideways-scrolling rows each screen may have (open-ended lists only, APP-RULES 196)
+    // 2-read: the page panning sideways + the page strip; 6-scan: the scanned pages strip
+    private val OPEN_LISTS = mapOf("2-read" to 2, "6-scan" to 1)
 }
