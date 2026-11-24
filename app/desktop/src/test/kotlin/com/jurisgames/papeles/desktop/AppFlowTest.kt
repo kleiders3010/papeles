@@ -127,6 +127,8 @@ class FakeHost : Host {
     }
     override fun reopen(name: String, key: String): Picked? = files[name]?.let { Picked(name, key) { it } }
     override fun share(file: Picked) { shared += file.name }
+    var note: String? = null
+    override val shareNote: String? get() = note
     val printed = mutableListOf<String>()
     val openedWith = mutableListOf<String>()
     override val canPrint = true
@@ -805,6 +807,23 @@ class AppFlowTest {
         onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.3f + 4f, height * 0.5f + 4f)) }
         onNodeWithTag("deleteMark").performClick()
         onNodeWithTag("make").assertIsNotEnabled() // the only mark is gone
+    }
+
+    /** Guard: desktop Share says what it did (it opened the PDF app, the same as Open with, and said nothing) */
+    @Test
+    fun desktop_share_says_the_file_was_copied() {
+        val f = File.createTempFile("papeles-share", ".pdf").apply { writeBytes(byteArrayOf(1, 2, 3)); deleteOnExit() }
+        val t = FileOnClipboard(f)
+        assertEquals(listOf(f), t.getTransferData(java.awt.datatransfer.DataFlavor.javaFileListFlavor))
+        assertEquals(f.absolutePath, t.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor))
+        runComposeUiTest {
+            val host = FakeHost().apply { note = "Copied" }
+            setContent { AppTheme(DarkMode.Light) { com.jurisgames.papeles.ui.SavedRow(host, Picked("a.pdf", f.path) { f.readBytes() }) } }
+            onNodeWithTag("shareNote").assertDoesNotExist()
+            onNodeWithTag("share").performClick()
+            onNodeWithTag("shareNote").assert(androidx.compose.ui.test.hasText("Copied"))
+            assertEquals(listOf("a.pdf"), host.shared)
+        }
     }
 
     /** U-P15 guard: the pen draws in the colour and width picked (it was always thin dark blue) */

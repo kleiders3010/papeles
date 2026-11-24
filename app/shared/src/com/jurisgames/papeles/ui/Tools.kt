@@ -82,6 +82,7 @@ val LocalUnsaved = androidx.compose.runtime.staticCompositionLocalOf<Unsaved?> {
 /** After a save: what was saved and where (U-P6), Open in the reader, and a button to hand it on. */
 @Composable
 internal fun SavedRow(host: Host, saved: Picked?, extra: String = "") {
+    var noted by remember(saved) { mutableStateOf<String?>(null) }
     saved ?: return
     val open = LocalOpen.current
     val folder = remember(saved) { host.folderOf(saved) }
@@ -94,8 +95,9 @@ internal fun SavedRow(host: Host, saved: Picked?, extra: String = "") {
                 if (open != null) TextButton(onClick = { open(saved) }, modifier = Modifier.testTag("openSaved")) { Text(tr("Open")) }
                 // APP-RULE 222: what it made can be printed too
                 if (host.canPrint) TextButton(onClick = { host.print(saved) }, modifier = Modifier.testTag("printSaved")) { Text(tr("Print")) }
-                OutlinedButton(onClick = { host.share(saved) }, modifier = Modifier.padding(start = 8.dp).testTag("share")) { Text(tr("Share")) }
+                OutlinedButton(onClick = { host.share(saved); noted = host.shareNote }, modifier = Modifier.padding(start = 8.dp).testTag("share")) { Text(tr("Share")) }
             }
+            noted?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp).testTag("shareNote")) }
         }
     }
 }

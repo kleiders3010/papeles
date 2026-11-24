@@ -33,8 +33,11 @@ interface Host {
     /** A file from the recent list, if it can still be read. */
     fun reopen(name: String, key: String): Picked?
 
-    /** Hands a saved file to another app (share sheet / the system's default app). */
+    /** Hands a saved file to another app (Android: the share sheet; desktop: the clipboard and its folder). */
     fun share(file: Picked)
+
+    /** What to tell the person after share when the system shows nothing of its own (desktop); else null. */
+    val shareNote: String? get() = null
 
     /** U-P8: the system's print dialog for a PDF (Android PrintManager, desktop print); false where there is none. */
     val canPrint: Boolean get() = false

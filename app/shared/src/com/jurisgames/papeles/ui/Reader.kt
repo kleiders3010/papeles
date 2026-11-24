@@ -149,7 +149,7 @@ fun Reader(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit, editPages
             Box {
                 IconButton(onClick = { more = true }, modifier = Modifier.testTag("more")) { Icon(Ic.More, tr("More")) }
                 DropdownMenu(more, { more = false }) {
-                    DropdownMenuItem(text = { Text(tr("Share")) }, onClick = { more = false; host.share(Picked(doc.name, doc.key) { doc.bytes }) },
+                    DropdownMenuItem(text = { Text(tr("Share")) }, onClick = { more = false; host.share(Picked(doc.name, doc.key) { doc.bytes }); host.shareNote?.let { worker.say(it) } },
                         modifier = Modifier.testTag("shareDoc"))
                     DropdownMenuItem(text = { Text(if (dark) tr("Light pages") else tr("Dark pages")) },
                         onClick = { more = false; dark = !dark; DarkPages.set(host.appFiles, dark) }, modifier = Modifier.testTag("darkPages"))

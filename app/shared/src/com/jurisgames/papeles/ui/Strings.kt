@@ -82,6 +82,7 @@ val ES: Map<String, String> = mapOf(
     "{n} placed. Tap again to add another." to "{n} puestas. Tocá de nuevo para agregar otra.",
     "1 placed. Tap again to add another." to "1 puesta. Tocá de nuevo para agregar otra.",
     "Draw a new signature" to "Dibujar una firma nueva", "Undo" to "Deshacer", "Smaller" to "Más chica", "Bigger" to "Más grande",
+    "Copied. Paste it with Ctrl+V into an email, a chat or a folder." to "Copiado. Pegalo con Ctrl+V en un mail, un chat o una carpeta.",
     "Dark blue" to "Azul oscuro", "Black" to "Negro", "Red" to "Rojo", "Green" to "Verde", "Yellow" to "Amarillo", "Pink" to "Rosa",
     "Light blue" to "Celeste", "Thin" to "Fina", "Medium" to "Media", "Thick" to "Gruesa",
     "Save signed copy" to "Guardar copia firmada",

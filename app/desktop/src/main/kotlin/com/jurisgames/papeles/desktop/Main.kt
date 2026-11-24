@@ -94,7 +94,20 @@ class DesktopHost(private val owner: () -> Frame?) : Host {
 
     override fun folderOf(file: Picked): String? = File(file.key).parentFile?.path
 
+    // Windows has no share sheet a plain desktop app can call simply: the file goes on the clipboard (pastes as a file
+    // into mail, chat or Explorer) and its folder opens with it selected
     override fun share(file: Picked) {
+        runCatching {
+            val f = File(file.key).takeIf { it.isFile } ?: File(java.nio.file.Files.createTempDirectory("papeles-share").toFile(), file.name).also { it.writeBytes(file.read()) }
+            java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(FileOnClipboard(f), null)
+            if (System.getProperty("os.name").startsWith("Windows")) ProcessBuilder("explorer.exe", "/select,", f.absolutePath).start()
+            else java.awt.Desktop.getDesktop().open(f.parentFile)
+        }
+    }
+
+    override val shareNote: String get() = com.jurisgames.papeles.ui.tr("Copied. Paste it with Ctrl+V into an email, a chat or a folder.")
+
+    override fun openWith(file: Picked) {
         runCatching { java.awt.Desktop.getDesktop().open(File(file.key)) }
     }
 
@@ -106,6 +119,18 @@ class DesktopHost(private val owner: () -> Frame?) : Host {
     }
 
     override fun image(p: Picture): ImageBitmap = skiaImage(p)
+}
+
+/** A file on the clipboard, as Explorer puts one there (pastes as the file, or as its path in a text box). */
+class FileOnClipboard(private val f: File) : java.awt.datatransfer.Transferable {
+    private val flavors = arrayOf(java.awt.datatransfer.DataFlavor.javaFileListFlavor, java.awt.datatransfer.DataFlavor.stringFlavor)
+    override fun getTransferDataFlavors() = flavors.clone()
+    override fun isDataFlavorSupported(flavor: java.awt.datatransfer.DataFlavor) = flavor in flavors
+    override fun getTransferData(flavor: java.awt.datatransfer.DataFlavor): Any = when (flavor) {
+        java.awt.datatransfer.DataFlavor.javaFileListFlavor -> listOf(f)
+        java.awt.datatransfer.DataFlavor.stringFlavor -> f.absolutePath
+        else -> throw java.awt.datatransfer.UnsupportedFlavorException(flavor)
+    }
 }
 
 /** Where PDFium is: next to the app when packaged, or `-Dpp.pdfium=DIR` (development, tests). */
