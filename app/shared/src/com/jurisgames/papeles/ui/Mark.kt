@@ -5,6 +5,9 @@ package com.jurisgames.papeles.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -53,6 +56,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
@@ -74,10 +78,14 @@ import androidx.compose.runtime.key
 
 /** Typed text sizes, in points; it starts at 12. */
 val TEXT_SIZES = listOf(8f, 10f, 12f, 16f, 20f, 28f)
-/** The pen's width in points. */
+/** The pen's width in points (the middle of PEN_WIDTHS). */
 const val MARK_PEN = 2f
-private val MARK_INK = Color(0xFF1A237E)
-private val MARK_YELLOW = Color(0xFFFFEB3B)
+/** U-P15: the pen widths offered, in points, with their names. */
+private val PEN_WIDTHS = listOf(1f to "Thin", MARK_PEN to "Medium", 4f to "Thick")
+/** U-P15: pen colours (the first is the signature's dark blue) and highlighter colours (the first is yellow), 0xRRGGBB. */
+private val PEN_COLOURS = listOf(0x1A237Eu to "Dark blue", 0x000000u to "Black", 0xD32F2Fu to "Red", 0x2E7D32u to "Green")
+private val HIGHLIGHT_COLOURS = listOf(0xFFEB3Bu to "Yellow", 0x8BF07Au to "Green", 0xFF9EC7u to "Pink", 0x80D8FFu to "Light blue")
+private fun rgb(c: UInt) = Color(0xFF000000.toInt() or c.toInt())
 
 enum class MarkTool { Text, Highlight, Pen, Select }
 
@@ -101,8 +109,21 @@ private fun Mark.bounds(): androidx.compose.ui.geometry.Rect = when (this) {
 /** U-P15: the same mark moved by (dx, dy) points. */
 private fun Mark.moved(dx: Float, dy: Float): Mark = when (this) {
     is Mark.Text -> Mark.Text(page, x + dx, y + dy, text, size)
-    is Mark.Highlight -> Mark.Highlight(page, areas.map { com.jurisgames.papeles.core.Area(it.x + dx, it.y + dy, it.w, it.h) })
-    is Mark.Pen -> Mark.Pen(page, lines.map { l -> com.jurisgames.papeles.core.InkLine(l.points.map { com.jurisgames.papeles.core.InkPoint(it.x + dx, it.y + dy) }) }, pen)
+    is Mark.Highlight -> Mark.Highlight(page, areas.map { com.jurisgames.papeles.core.Area(it.x + dx, it.y + dy, it.w, it.h) }, colour)
+    is Mark.Pen -> Mark.Pen(page, lines.map { l -> com.jurisgames.papeles.core.InkLine(l.points.map { com.jurisgames.papeles.core.InkPoint(it.x + dx, it.y + dy) }) }, pen, colour)
+}
+
+/** The same mark one step bigger or smaller (text: the next text size; pen: 1.25x from its top-left corner), or null. */
+private fun Mark.resized(bigger: Boolean): Mark? = when (this) {
+    is Mark.Text -> (if (bigger) TEXT_SIZES.firstOrNull { it > size } else TEXT_SIZES.lastOrNull { it < size })?.let { Mark.Text(page, x, y, text, it) }
+    is Mark.Highlight -> null
+    is Mark.Pen -> {
+        val f = if (bigger) 1.25f else 0.8f
+        val o = bounds().topLeft
+        val w = bounds().width * f
+        if (w > 600f || w < 4f) null else // pinned: 600 pt is about a page's width; under 4 pt it can't be picked
+            Mark.Pen(page, lines.map { l -> com.jurisgames.papeles.core.InkLine(l.points.map { com.jurisgames.papeles.core.InkPoint(o.x + (it.x - o.x) * f, o.y + (it.y - o.y) * f) }) }, pen, colour)
+    }
 }
 
 private fun Mark.page(): Int = when (this) {
@@ -131,6 +152,10 @@ fun MarkScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
     val down = androidx.compose.foundation.rememberScrollState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var editing by remember(doc) { mutableStateOf<Mark.Text?>(null) }
+    // U-P15: the pen's colour and width and the highlighter's colour, for the next marks
+    var penColour by remember { mutableStateOf(PEN_COLOURS.first().first) }
+    var penWidth by remember { mutableStateOf(MARK_PEN) }
+    var hlColour by remember { mutableStateOf(HIGHLIGHT_COLOURS.first().first) }
     var saved by remember { mutableStateOf<Picked?>(null) }
     val sizes = remember(doc) { HashMap<Int, PageBox>() }
     val box = sizes.getOrPut(page) { runCatching { doc.file.pageSize(page.toUInt()) }.getOrDefault(PageBox(595f, 842f)) }
@@ -181,12 +206,36 @@ fun MarkScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
             MarkTool.Pen -> tr("Write or draw with your finger or the mouse.")
             MarkTool.Select -> tr("Tap a mark to pick it; drag it to move it.")
         }, Modifier.padding(horizontal = 16.dp).testTag("markHint"))
+        if (tool == MarkTool.Pen || tool == MarkTool.Highlight) {
+            val pen = tool == MarkTool.Pen
+            androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                for ((c, name) in if (pen) PEN_COLOURS else HIGHLIGHT_COLOURS) {
+                    val on = c == (if (pen) penColour else hlColour)
+                    Box(Modifier.size(48.dp).clickable(onClickLabel = tr(name)) { if (pen) penColour = c else hlColour = c }
+                        .semantics { contentDescription = tr(name); selected = on }.testTag("colour-$name"), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(if (on) 32.dp else 26.dp).background(rgb(c), androidx.compose.foundation.shape.CircleShape)
+                            .then(if (on) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape) else
+                                Modifier.border(1.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.CircleShape)))
+                    }
+                }
+                if (pen) for ((w, name) in PEN_WIDTHS) {
+                    FilterChip(selected = penWidth == w, onClick = { penWidth = w }, label = { Text(tr(name)) },
+                        modifier = Modifier.padding(horizontal = 4.dp).align(Alignment.CenterVertically).testTag("width-$name"))
+                }
+            }
+        }
         // U-P15: what can be done with the picked mark
         picked?.let { i -> marks.getOrNull(i) }?.let { m ->
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (m is Mark.Text) TextButton(onClick = {
                     marks.removeAt(picked!!); picked = null; editing = m; size = m.size; typing = Typing(m.page.toInt(), m.x, m.y); saved = null
                 }, modifier = Modifier.testTag("editMark")) { Text(tr("Edit")) }
+                if (m !is Mark.Highlight) {
+                    TextButton(onClick = { m.resized(false)?.let { marks[picked!!] = it; saved = null } }, enabled = m.resized(false) != null,
+                        modifier = Modifier.testTag("markSmaller")) { Text(tr("Smaller")) }
+                    TextButton(onClick = { m.resized(true)?.let { marks[picked!!] = it; saved = null } }, enabled = m.resized(true) != null,
+                        modifier = Modifier.testTag("markBigger")) { Text(tr("Bigger")) }
+                }
                 TextButton(onClick = { marks.removeAt(picked!!); picked = null; saved = null }, modifier = Modifier.testTag("deleteMark")) { Text(tr("Delete")) }
             }
         }
@@ -217,7 +266,7 @@ fun MarkScreen(doc: OpenDoc, host: Host, worker: Worker, back: () -> Unit) {
                         } while (e.changes.any { it.pressed })
                     }
                 }, contentAlignment = Alignment.Center) {
-            MarkPage(doc, host, page, box, shown, ratio, px, tool, marks.filter { it.page() == page }, add = ::add,
+            MarkPage(doc, host, page, box, shown, ratio, px, tool, marks.filter { it.page() == page }, add = ::add, penColour = penColour, penWidth = penWidth, hlColour = hlColour,
                 type = { x, y -> typing = Typing(page, x, y) },
                 picked = picked?.let { marks.getOrNull(it) },
                 pick = { x, y -> picked = pickAt(x, y) },
@@ -263,6 +312,7 @@ private fun TextBar(size: Float, onSize: (Float) -> Unit, onCancel: () -> Unit, 
 @Composable
 private fun MarkPage(doc: OpenDoc, host: Host, n: Int, box: PageBox, shown: androidx.compose.ui.unit.Dp, ratio: Float, px: Int, tool: MarkTool,
                      here: List<Mark>, add: (Mark) -> Unit, type: (Float, Float) -> Unit,
+                     penColour: UInt = PEN_COLOURS.first().first, penWidth: Float = MARK_PEN, hlColour: UInt = HIGHLIGHT_COLOURS.first().first,
                      picked: Mark? = null, pick: (Float, Float) -> Unit = { _, _ -> }, move: (Float, Float) -> Unit = { _, _ -> }) {
     var img by remember(doc, n) { mutableStateOf<ImageBitmap?>(null) } // the old picture stays until the sharper one is ready (223)
     LaunchedEffect(doc, n, px) {
@@ -277,7 +327,7 @@ private fun MarkPage(doc: OpenDoc, host: Host, n: Int, box: PageBox, shown: andr
         .pointerInput(Unit) {
             awaitEachGesture { downAt = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).position }
         }
-        .pointerInput(n, box, tool) {
+        .pointerInput(n, box, tool, penColour, penWidth, hlColour) {
             fun pt(o: Offset) = Offset(o.x / size.width * box.width, o.y / size.height * box.height)
             if (tool == MarkTool.Text) {
                 detectTapGestures { o -> pt(o).let { type(it.x, it.y) } }
@@ -313,12 +363,12 @@ private fun MarkPage(doc: OpenDoc, host: Host, n: Int, box: PageBox, shown: andr
                         val d = drag
                         drag = emptyList()
                         if (tool == MarkTool.Pen && d.isNotEmpty()) {
-                            add(Mark.Pen(n.toUInt(), listOf(InkLine(d.map { InkPoint(it.x, it.y) })), MARK_PEN))
+                            add(Mark.Pen(n.toUInt(), listOf(InkLine(d.map { InkPoint(it.x, it.y) })), penWidth, penColour))
                         } else if (d.size == 2) {
                             val (a, b) = d
                             val area = Area(minOf(a.x, b.x), minOf(a.y, b.y), kotlin.math.abs(a.x - b.x), kotlin.math.abs(a.y - b.y))
                             // U-P33: the words under the box, line by line (a plain box cut words in half); no text there: the box
-                            if (area.w > 1f && area.h > 1f) add(Mark.Highlight(n.toUInt(), runCatching { doc.file.linesIn(n.toUInt(), area) }.getOrDefault(emptyList()).ifEmpty { listOf(area) }))
+                            if (area.w > 1f && area.h > 1f) add(Mark.Highlight(n.toUInt(), runCatching { doc.file.linesIn(n.toUInt(), area) }.getOrDefault(emptyList()).ifEmpty { listOf(area) }, hlColour))
                         }
                     },
                     onDragCancel = { drag = emptyList() },
@@ -329,16 +379,16 @@ private fun MarkPage(doc: OpenDoc, host: Host, n: Int, box: PageBox, shown: andr
         img?.let { Image(it, null, Modifier.fillMaxSize()) }
         Canvas(Modifier.fillMaxSize()) {
             val s = size.width / box.width
-            fun line(points: List<Offset>, width: Float) {
+            fun line(points: List<Offset>, width: Float, colour: UInt) {
                 if (points.isEmpty()) return
                 val path = Path()
                 points.forEachIndexed { i, p -> if (i == 0) path.moveTo(p.x * s, p.y * s) else path.lineTo(p.x * s, p.y * s) }
                 if (points.size == 1) path.lineTo(points[0].x * s + 0.01f, points[0].y * s)
-                drawPath(path, MARK_INK, style = Stroke(width = width * s, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                drawPath(path, rgb(colour), style = Stroke(width = width * s, cap = StrokeCap.Round, join = StrokeJoin.Round))
             }
             for (m in here) when (m) {
-                is Mark.Highlight -> for (a in m.areas) drawRect(MARK_YELLOW, Offset(a.x * s, a.y * s), Size(a.w * s, a.h * s), blendMode = BlendMode.Multiply)
-                is Mark.Pen -> for (l in m.lines) line(l.points.map { Offset(it.x, it.y) }, m.pen)
+                is Mark.Highlight -> for (a in m.areas) drawRect(rgb(m.colour), Offset(a.x * s, a.y * s), Size(a.w * s, a.h * s), blendMode = BlendMode.Multiply)
+                is Mark.Pen -> for (l in m.lines) line(l.points.map { Offset(it.x, it.y) }, m.pen, m.colour)
                 is Mark.Text -> drawText(measurer, m.text, Offset((m.x + m.size * 0.25f) * s, (m.y + m.size * 0.25f) * s),
                     TextStyle(color = Color.Black, fontFamily = FontFamily.SansSerif, fontSize = (m.size * s / density).sp, lineHeight = (m.size * 1.2f * s / density).sp))
             }
@@ -347,10 +397,10 @@ private fun MarkPage(doc: OpenDoc, host: Host, n: Int, box: PageBox, shown: andr
                 drawRect(Color(0xFF1565C0), Offset(r.left * s, r.top * s), Size(r.width * s, r.height * s), style = Stroke(width = 2.dp.toPx()))
             }
             if (drag.isNotEmpty()) when (tool) {
-                MarkTool.Pen -> line(drag, MARK_PEN)
+                MarkTool.Pen -> line(drag, penWidth, penColour)
                 MarkTool.Highlight -> if (drag.size == 2) {
                     val (a, b) = drag
-                    drawRect(MARK_YELLOW.copy(alpha = 0.6f), Offset(minOf(a.x, b.x) * s, minOf(a.y, b.y) * s),
+                    drawRect(rgb(hlColour).copy(alpha = 0.6f), Offset(minOf(a.x, b.x) * s, minOf(a.y, b.y) * s),
                         Size(kotlin.math.abs(a.x - b.x) * s, kotlin.math.abs(a.y - b.y) * s), blendMode = BlendMode.Multiply)
                 }
                 MarkTool.Text, MarkTool.Select -> {}

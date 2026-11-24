@@ -82,6 +82,8 @@ val ES: Map<String, String> = mapOf(
     "{n} placed. Tap again to add another." to "{n} puestas. Tocá de nuevo para agregar otra.",
     "1 placed. Tap again to add another." to "1 puesta. Tocá de nuevo para agregar otra.",
     "Draw a new signature" to "Dibujar una firma nueva", "Undo" to "Deshacer", "Smaller" to "Más chica", "Bigger" to "Más grande",
+    "Dark blue" to "Azul oscuro", "Black" to "Negro", "Red" to "Rojo", "Green" to "Verde", "Yellow" to "Amarillo", "Pink" to "Rosa",
+    "Light blue" to "Celeste", "Thin" to "Fina", "Medium" to "Media", "Thick" to "Gruesa",
     "Save signed copy" to "Guardar copia firmada",
     "This is a picture of your signature, as on paper; it is not a digital signature." to
         "Es una imagen de tu firma, como en papel; no es una firma digital.",

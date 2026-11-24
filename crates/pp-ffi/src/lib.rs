@@ -402,10 +402,15 @@ pub fn stamp_pictures(input: PdfInput, at: Vec<StampAt>, picture: Vec<u8>) -> Re
 pub enum Mark {
     /// `text` (lines split on '\n') with its top left at (x, y), `size` points tall, black.
     Text { page: u32, x: f32, y: f32, text: String, size: f32 },
-    /// Yellow highlighter over each area.
-    Highlight { page: u32, areas: Vec<Area> },
-    /// Pen lines, `pen` points wide, dark blue.
-    Pen { page: u32, lines: Vec<InkLine>, pen: f32 },
+    /// Highlighter over each area, `colour` as 0xRRGGBB.
+    Highlight { page: u32, areas: Vec<Area>, colour: u32 },
+    /// Pen lines, `pen` points wide, `colour` as 0xRRGGBB.
+    Pen { page: u32, lines: Vec<InkLine>, pen: f32, colour: u32 },
+}
+
+/// 0xRRGGBB as PDF colour 0..1.
+fn rgb(c: u32) -> [f32; 3] {
+    [((c >> 16) & 0xFF) as f32 / 255.0, ((c >> 8) & 0xFF) as f32 / 255.0, (c & 0xFF) as f32 / 255.0]
 }
 
 /// The box typed text takes at `size` points: (width, height) in points.
@@ -426,10 +431,12 @@ pub fn add_marks(input: PdfInput, marks: Vec<Mark>) -> Result<Vec<u8>> {
     for m in marks {
         let (page, core) = match m {
             Mark::Text { page, x, y, text, size } => (page, pp_core::annotate::Mark::Text { at: (x, y), text, size }),
-            Mark::Highlight { page, areas } => (page, pp_core::annotate::Mark::Highlight {
+            Mark::Highlight { page, areas, colour } => (page, pp_core::annotate::Mark::Highlight {
                 areas: areas.iter().map(|a| pp_core::view::Area { x: a.x, y: a.y, w: a.w, h: a.h }).collect(),
+                colour: rgb(colour),
             }),
-            Mark::Pen { page, lines, pen } => (page, pp_core::annotate::Mark::Ink {
+            Mark::Pen { page, lines, pen, colour } => (page, pp_core::annotate::Mark::Ink {
+                colour: rgb(colour),
                 lines: lines.iter().map(|l| l.points.iter().map(|p| (p.x, p.y)).collect()).collect(),
                 pen,
             }),

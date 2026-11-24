@@ -1,6 +1,8 @@
 package com.jurisgames.papeles.desktop
 
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -253,9 +255,9 @@ class AppFlowTest {
         val direct = runCatching {
             com.jurisgames.papeles.core.addMarks(PdfInput(host.files["letter.pdf"]!!, null), listOf(
                 com.jurisgames.papeles.core.Mark.Text(1u, 60f, 250f, "Hola, sí", 16f),
-                com.jurisgames.papeles.core.Mark.Highlight(1u, listOf(com.jurisgames.papeles.core.Area(60f, 400f, 200f, 30f))),
+                com.jurisgames.papeles.core.Mark.Highlight(1u, listOf(com.jurisgames.papeles.core.Area(60f, 400f, 200f, 30f)), 0xFFEB3Bu),
                 com.jurisgames.papeles.core.Mark.Pen(1u, listOf(com.jurisgames.papeles.core.InkLine(listOf(
-                    com.jurisgames.papeles.core.InkPoint(60f, 650f), com.jurisgames.papeles.core.InkPoint(400f, 650f)))), 2f)))
+                    com.jurisgames.papeles.core.InkPoint(60f, 650f), com.jurisgames.papeles.core.InkPoint(400f, 650f)))), 2f, 0x1A237Eu)))
         }
         assertTrue(direct.isSuccess, "addMarks on its own: ${direct.exceptionOrNull()}")
         onNodeWithTag("mark").performClick()
@@ -803,6 +805,69 @@ class AppFlowTest {
         onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.3f + 4f, height * 0.5f + 4f)) }
         onNodeWithTag("deleteMark").performClick()
         onNodeWithTag("make").assertIsNotEnabled() // the only mark is gone
+    }
+
+    /** U-P15 guard: the pen draws in the colour and width picked (it was always thin dark blue) */
+    @Test
+    fun the_pen_draws_in_the_picked_colour_and_width() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("letter.pdf", textPdf("Dear sir")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("mark")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("mark").performClick()
+        onNodeWithTag("toolPen").performClick()
+        onNodeWithTag("colour-Red").performClick()
+        onNodeWithTag("width-Thick").performClick()
+        onNodeWithTag("markPage-1").performTouchInput {
+            down(Offset(width * 0.3f, height * 0.7f)); moveTo(Offset(width * 0.45f, height * 0.7f)); moveTo(Offset(width * 0.6f, height * 0.7f)); up()
+        }
+        waitForIdle()
+        val img = onNodeWithTag("markPage-1").captureToImage().toPixelMap()
+        val p = img[(img.width * 0.45f).toInt(), (img.height * 0.7f).toInt()]
+        assertTrue(p.red > 0.6f && p.green < 0.4f && p.blue < 0.4f, "the stroke is red: $p") // pinned: 0xD32F2F
+        // thick: 4 pt is still red 1 pt off the middle of the line (thin dark blue was 2 pt)
+        val s = img.width / 595f // pinned: textPdf pages are A4, 595 pt wide
+        val q = img[(img.width * 0.45f).toInt(), (img.height * 0.7f + 1.5f * s).toInt()]
+        assertTrue(q.red > 0.6f && q.green < 0.5f, "the stroke is thick: $q")
+        onNodeWithTag("toolHighlight").performClick()
+        onNodeWithTag("colour-Pink").assertExists()
+        onNodeWithTag("width-Thick").assertDoesNotExist()
+    }
+
+    /** Guard: a picked text or pen mark gets bigger and smaller (it could only be deleted and typed again) */
+    @Test
+    fun a_picked_mark_gets_bigger_and_smaller() = runComposeUiTest {
+        val host = FakeHost()
+        setContent { AppTheme(DarkMode.Light) { PapelesApp(host) {} } }
+        host.pdfs += listOf(host.file("letter.pdf", textPdf("Dear sir")))
+        onNodeWithTag("open").performClick()
+        waitUntil(timeoutMillis = 10_000) { onAllNodes(hasTestTag("mark")).fetchSemanticsNodes().isNotEmpty() }
+        onNodeWithTag("mark").performClick()
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.3f, height * 0.2f)) }
+        onNodeWithTag("markText").performTextInput("Hola")
+        onNodeWithTag("addText").performClick()
+        onNodeWithTag("toolSelect").performClick()
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.3f + 4f, height * 0.2f + 4f)) }
+        onNodeWithTag("markBigger").performClick()
+        onNodeWithTag("editMark").performClick()
+        onNodeWithTag("textSize").assertTextContains("16", substring = true) // pinned: default 12 -> next TEXT_SIZES step 16
+        onNodeWithTag("addText").performClick()
+        // a pen stroke a tenth of the page wide; three steps bigger (1.25^3 ~ 1.95x) it reaches past 0.47 of the width
+        onNodeWithTag("toolPen").performClick()
+        onNodeWithTag("markPage-1").performTouchInput {
+            down(Offset(width * 0.3f, height * 0.6f)); moveTo(Offset(width * 0.35f, height * 0.6f)); moveTo(Offset(width * 0.4f, height * 0.6f)); up()
+        }
+        onNodeWithTag("toolSelect").performClick()
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.47f, height * 0.6f)) }
+        onNodeWithTag("deleteMark").assertDoesNotExist() // nothing there yet
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.35f, height * 0.6f)) }
+        repeat(3) { onNodeWithTag("markBigger").performClick() }
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.9f, height * 0.9f)) } // let go of it
+        onNodeWithTag("markPage-1").performTouchInput { click(Offset(width * 0.47f, height * 0.6f)) }
+        onNodeWithTag("deleteMark").assertExists()
+        onNodeWithTag("markSmaller").performClick()
+        onNodeWithTag("markSmaller").assertIsEnabled()
     }
 
     /** U-P17 guard: the cleaned page can be seen before saving, and a removed page comes back with Undo */

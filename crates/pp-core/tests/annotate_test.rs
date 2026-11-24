@@ -100,7 +100,7 @@ fn the_highlighter_shows_the_page_through() {
         let bar_y = (0..bh).find(|&y| dark(before.get_pixel(bw / 2, y))).expect("the bar");
         let bar_x = (0..bw).find(|&x| dark(before.get_pixel(x, bar_y + 2))).unwrap_or(0);
         let area = Area { x: (bar_x + 10) as f32, y: bar_y as f32 - 30.0, w: 60.0, h: 50.0 };
-        annotate::annotate(&mut d, 1, &[Mark::Highlight { areas: vec![area] }]).unwrap();
+        annotate::annotate(&mut d, 1, &[Mark::Highlight { areas: vec![area], colour: annotate::HIGHLIGHT }]).unwrap();
         assert_eq!(subtypes(&d), ["Highlight"]);
         let img = shown(&mut d);
         let paper = img.get_pixel(bar_x + 40, bar_y - 15);
@@ -118,7 +118,7 @@ fn the_pen_draws_its_lines_and_adds_to_existing_marks() {
         annotate::annotate(&mut d, 1, &[Mark::Text { at: (300.0, 500.0), text: "x".into(), size: 10.0 }]).unwrap();
         // an "L" as shown: down, then right
         let lines = vec![vec![(100.0, 100.0), (100.0, 300.0), (250.0, 300.0)], vec![(400.0, 150.0)]];
-        annotate::annotate(&mut d, 1, &[Mark::Ink { lines, pen: 4.0 }]).unwrap();
+        annotate::annotate(&mut d, 1, &[Mark::Ink { lines, pen: 4.0, colour: annotate::PEN }]).unwrap();
         assert_eq!(subtypes(&d), ["FreeText", "Ink"]);
         let img = shown(&mut d);
         assert!(dark_in(&img, 97, 180, 6, 40) > 50, "down stroke on a page turned {rotate}");
@@ -126,6 +126,22 @@ fn the_pen_draws_its_lines_and_adds_to_existing_marks() {
         assert!(dark_in(&img, 397, 147, 6, 6) > 5, "a single touch leaves a dot on a page turned {rotate}");
         assert_eq!(dark_in(&img, 160, 150, 60, 60), 0, "inside the L stays paper on a page turned {rotate}");
     }
+}
+
+#[test]
+fn a_red_pen_and_a_green_highlighter_draw_in_their_colours() {
+    let mut d = page(0);
+    let red = [0.85, 0.1, 0.1]; // pinned: the app's red pen
+    let green = [0.55, 0.95, 0.45]; // pinned: the app's green highlighter
+    annotate::annotate(&mut d, 1, &[
+        Mark::Ink { lines: vec![vec![(100.0, 100.0), (100.0, 300.0)]], pen: 6.0, colour: red },
+        Mark::Highlight { areas: vec![Area { x: 300.0, y: 100.0, w: 80.0, h: 40.0 }], colour: green },
+    ]).unwrap();
+    let img = shown(&mut d);
+    let p = img.get_pixel(100, 200);
+    assert!(p[0] > 150 && p[1] < 90 && p[2] < 90, "the pen line is red: {p:?}");
+    let h = img.get_pixel(340, 120);
+    assert!(h[1] > 180 && h[0] < 190 && h[2] < 160, "the highlight is green: {h:?}");
 }
 
 #[test]
@@ -137,11 +153,11 @@ fn bad_input_is_an_error() {
     assert!(annotate::annotate(&mut d, 1, &[text("  ", 12.0)]).is_err());
     assert!(annotate::annotate(&mut d, 1, &[text("a", 0.0)]).is_err());
     assert!(annotate::annotate(&mut d, 1, &[text("a", f32::NAN)]).is_err());
-    assert!(annotate::annotate(&mut d, 1, &[Mark::Highlight { areas: vec![Area { x: 0.0, y: 0.0, w: 0.0, h: 5.0 }] }]).is_err());
-    assert!(annotate::annotate(&mut d, 1, &[Mark::Ink { lines: vec![vec![(f32::NAN, 1.0)]], pen: 2.0 }]).is_err());
-    assert!(annotate::annotate(&mut d, 1, &[Mark::Ink { lines: vec![vec![(1.0, 1.0)]], pen: 0.0 }]).is_err());
+    assert!(annotate::annotate(&mut d, 1, &[Mark::Highlight { areas: vec![Area { x: 0.0, y: 0.0, w: 0.0, h: 5.0 }], colour: annotate::HIGHLIGHT }]).is_err());
+    assert!(annotate::annotate(&mut d, 1, &[Mark::Ink { lines: vec![vec![(f32::NAN, 1.0)]], pen: 2.0, colour: annotate::PEN }]).is_err());
+    assert!(annotate::annotate(&mut d, 1, &[Mark::Ink { lines: vec![vec![(1.0, 1.0)]], pen: 0.0, colour: annotate::PEN }]).is_err());
     let huge = vec![vec![(1.0, 1.0); annotate::MAX_PEN_POINTS + 1]];
-    assert!(annotate::annotate(&mut d, 1, &[Mark::Ink { lines: huge, pen: 2.0 }]).is_err());
+    assert!(annotate::annotate(&mut d, 1, &[Mark::Ink { lines: huge, pen: 2.0, colour: annotate::PEN }]).is_err());
     // nothing was added by the refused calls
     let page = *d.get_pages().get(&1).unwrap();
     assert!(d.get_dictionary(page).unwrap().get(b"Annots").is_err());

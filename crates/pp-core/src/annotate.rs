@@ -24,10 +24,15 @@ pub const PEN: [f32; 3] = [0x1A as f32 / 255.0, 0x23 as f32 / 255.0, 0x7E as f32
 pub enum Mark {
     /// `text` (lines split on '\n') with its top left corner at `at`, `size` points tall, black.
     Text { at: (f32, f32), text: String, size: f32 },
-    /// Yellow highlighter over each area (one per line of text marked).
-    Highlight { areas: Vec<Area> },
-    /// Pen lines, `pen` points wide.
-    Ink { lines: Vec<Vec<(f32, f32)>>, pen: f32 },
+    /// Highlighter over each area (one per line of text marked), `colour` as PDF 0..1 (HIGHLIGHT is the yellow).
+    Highlight { areas: Vec<Area>, colour: [f32; 3] },
+    /// Pen lines, `pen` points wide, `colour` as PDF 0..1 (PEN is the dark blue).
+    Ink { lines: Vec<Vec<(f32, f32)>>, pen: f32, colour: [f32; 3] },
+}
+
+/// A colour kept inside 0..1 (anything not a number becomes 0).
+fn clamp(c: &[f32; 3]) -> [f32; 3] {
+    c.map(|v| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 })
 }
 
 fn damaged(e: impl std::fmt::Display) -> Error {
@@ -217,7 +222,7 @@ pub fn annotate(doc: &mut Document, page: u32, marks: &[Mark]) -> Result<()> {
                 };
                 ("FreeText", Area { x: at.0, y: at.1, w, h }, ops, res, extra)
             }
-            Mark::Highlight { areas } => {
+            Mark::Highlight { areas, colour } => {
                 let areas: Vec<&Area> = areas.iter().filter(|a| finite(&[a.x, a.y, a.w, a.h]) && a.w > 0.1 && a.h > 0.1).collect();
                 if areas.is_empty() {
                     return Err(Error::Empty);
@@ -225,7 +230,7 @@ pub fn annotate(doc: &mut Document, page: u32, marks: &[Mark]) -> Result<()> {
                 let (x0, y0) = areas.iter().fold((f32::MAX, f32::MAX), |(x, y), a| (x.min(a.x), y.min(a.y)));
                 let (x1, y1) = areas.iter().fold((f32::MIN, f32::MIN), |(x, y), a| (x.max(a.x + a.w), y.max(a.y + a.h)));
                 let all = Area { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-                let [r, g, b] = HIGHLIGHT;
+                let [r, g, b] = clamp(colour);
                 let mut ops = format!("/Mul gs {r} {g} {b} rg\n");
                 let mut quads = Vec::new();
                 for a in &areas {
@@ -239,7 +244,7 @@ pub fn annotate(doc: &mut Document, page: u32, marks: &[Mark]) -> Result<()> {
                 let res = dictionary! { "ExtGState" => dictionary! { "Mul" => dictionary! { "Type" => "ExtGState", "BM" => "Multiply" } } };
                 ("Highlight", all, ops, res, dictionary! { "QuadPoints" => nums(&quads) })
             }
-            Mark::Ink { lines, pen } => {
+            Mark::Ink { lines, pen, colour } => {
                 let lines: Vec<Vec<(f32, f32)>> = lines.iter()
                     .map(|l| l.iter().copied().filter(|(x, y)| x.is_finite() && y.is_finite()).collect::<Vec<_>>())
                     .filter(|l| !l.is_empty()).collect();
@@ -251,7 +256,7 @@ pub fn annotate(doc: &mut Document, page: u32, marks: &[Mark]) -> Result<()> {
                 let (x1, y1) = pts.fold((f32::MIN, f32::MIN), |(x, y), p| (x.max(p.0), y.max(p.1)));
                 let half = pen / 2.0 + 1.0;
                 let all = Area { x: x0 - half, y: y0 - half, w: x1 - x0 + 2.0 * half, h: y1 - y0 + 2.0 * half };
-                let [r, g, b] = PEN;
+                let [r, g, b] = clamp(colour);
                 let mut ops = format!("{pen:.2} w 1 J 1 j {r:.4} {g:.4} {b:.4} RG\n");
                 let mut list = Vec::new();
                 for l in &lines {
@@ -272,7 +277,7 @@ pub fn annotate(doc: &mut Document, page: u32, marks: &[Mark]) -> Result<()> {
             }
         };
         let ap = appearance(doc, &f, &area, ops, res);
-        let colour = match m { Mark::Text { .. } => vec![], Mark::Highlight { .. } => HIGHLIGHT.to_vec(), Mark::Ink { .. } => PEN.to_vec() };
+        let colour = match m { Mark::Text { .. } => vec![], Mark::Highlight { colour, .. } | Mark::Ink { colour, .. } => clamp(colour).to_vec() };
         extra.extend(&dictionary! {
             "Type" => "Annot", "Subtype" => sub, "Rect" => nums(&f.rect(&area)), "P" => page_id, "F" => 4,
             "NM" => Object::String(format!("pp-{}-{}", page, made.len() + 1).into_bytes(), StringFormat::Literal),

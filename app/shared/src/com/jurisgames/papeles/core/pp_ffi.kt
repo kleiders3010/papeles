@@ -2356,11 +2356,12 @@ sealed class Mark {
     }
     
     /**
-     * Yellow highlighter over each area.
+     * Highlighter over each area, `colour` as 0xRRGGBB.
      */
     data class Highlight(
         val `page`: kotlin.UInt, 
-        val `areas`: List<com.jurisgames.papeles.core.Area>) : Mark()
+        val `areas`: List<com.jurisgames.papeles.core.Area>, 
+        val `colour`: kotlin.UInt) : Mark()
         
     {
         
@@ -2369,12 +2370,13 @@ sealed class Mark {
     }
     
     /**
-     * Pen lines, `pen` points wide, dark blue.
+     * Pen lines, `pen` points wide, `colour` as 0xRRGGBB.
      */
     data class Pen(
         val `page`: kotlin.UInt, 
         val `lines`: List<com.jurisgames.papeles.core.InkLine>, 
-        val `pen`: kotlin.Float) : Mark()
+        val `pen`: kotlin.Float, 
+        val `colour`: kotlin.UInt) : Mark()
         
     {
         
@@ -2408,11 +2410,13 @@ public object FfiConverterTypeMark : FfiConverterRustBuffer<Mark>{
             2 -> Mark.Highlight(
                 FfiConverterUInt.read(buf),
                 FfiConverterSequenceTypeArea.read(buf),
+                FfiConverterUInt.read(buf),
                 )
             3 -> Mark.Pen(
                 FfiConverterUInt.read(buf),
                 FfiConverterSequenceTypeInkLine.read(buf),
                 FfiConverterFloat.read(buf),
+                FfiConverterUInt.read(buf),
                 )
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
@@ -2436,6 +2440,7 @@ public object FfiConverterTypeMark : FfiConverterRustBuffer<Mark>{
                 4UL
                 + FfiConverterUInt.allocationSize(value.`page`)
                 + FfiConverterSequenceTypeArea.allocationSize(value.`areas`)
+                + FfiConverterUInt.allocationSize(value.`colour`)
             )
         }
         is Mark.Pen -> {
@@ -2445,6 +2450,7 @@ public object FfiConverterTypeMark : FfiConverterRustBuffer<Mark>{
                 + FfiConverterUInt.allocationSize(value.`page`)
                 + FfiConverterSequenceTypeInkLine.allocationSize(value.`lines`)
                 + FfiConverterFloat.allocationSize(value.`pen`)
+                + FfiConverterUInt.allocationSize(value.`colour`)
             )
         }
     }
@@ -2464,6 +2470,7 @@ public object FfiConverterTypeMark : FfiConverterRustBuffer<Mark>{
                 buf.putInt(2)
                 FfiConverterUInt.write(value.`page`, buf)
                 FfiConverterSequenceTypeArea.write(value.`areas`, buf)
+                FfiConverterUInt.write(value.`colour`, buf)
                 Unit
             }
             is Mark.Pen -> {
@@ -2471,6 +2478,7 @@ public object FfiConverterTypeMark : FfiConverterRustBuffer<Mark>{
                 FfiConverterUInt.write(value.`page`, buf)
                 FfiConverterSequenceTypeInkLine.write(value.`lines`, buf)
                 FfiConverterFloat.write(value.`pen`, buf)
+                FfiConverterUInt.write(value.`colour`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
