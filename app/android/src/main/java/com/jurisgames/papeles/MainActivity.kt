@@ -95,7 +95,8 @@ class MainActivity : ComponentActivity(), Host {
         onSaved = null
         if (uri == null) { done?.invoke(null); return@registerForActivityResult }
         val ok = bytes != null && runCatching { contentResolver.openOutputStream(uri, "wt")!!.use { it.write(bytes) } }.isSuccess
-        if (!ok) runCatching { android.provider.DocumentsContract.deleteDocument(contentResolver, uri) } // never an empty file
+        // never an empty file (APP-RULE 226), but never someone's older file either: only one we began writing or an empty one (S4-3)
+        if (!ok && (bytes != null || runCatching { contentResolver.openAssetFileDescriptor(uri, "r")!!.use { it.length == 0L } }.getOrDefault(false))) runCatching { android.provider.DocumentsContract.deleteDocument(contentResolver, uri) }
         val got = if (ok) picked(uri) else null
         if (done != null) done(got)
         else android.widget.Toast.makeText(this, if (got != null) tr("Saved: {name}", "name" to got.name) else tr("Nothing was saved. Try again."), android.widget.Toast.LENGTH_LONG).show()
