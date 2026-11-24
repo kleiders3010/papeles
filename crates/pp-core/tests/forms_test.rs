@@ -29,7 +29,7 @@ fn form(signed: bool) -> Vec<u8> {
     let mut annots = vec![];
     let mut fields = vec![];
     let name = d.add_object(dictionary! { "Type" => "Annot", "Subtype" => "Widget", "FT" => "Tx", "T" => Object::string_literal("name"),
-        "V" => Object::string_literal("old"), "Rect" => rect(72, 700, 200, 20), "P" => page_id, "DA" => Object::string_literal("/Helv 12 Tf 0 g") });
+        "TU" => Object::string_literal(" Your full name "), "V" => Object::string_literal("old"), "Rect" => rect(72, 700, 200, 20), "P" => page_id, "DA" => Object::string_literal("/Helv 12 Tf 0 g") });
     let (on1, off1) = (ap(&mut d), off(&mut d));
     let news = d.add_object(dictionary! { "Type" => "Annot", "Subtype" => "Widget", "FT" => "Btn", "T" => Object::string_literal("news"),
         "V" => "Off", "AS" => "Off", "Rect" => rect(72, 660, 12, 12), "P" => page_id, "AP" => dictionary! { "N" => dictionary! { "Si" => on1, "Off" => off1 } } });
@@ -42,7 +42,7 @@ fn form(signed: bool) -> Vec<u8> {
         kids.push(Object::Reference(k));
         annots.push(Object::Reference(k));
     }
-    d.objects.insert(size, Object::Dictionary(dictionary! { "FT" => "Btn", "Ff" => 1i64 << 15, "T" => Object::string_literal("size"), "V" => "Off", "Kids" => kids }));
+    d.objects.insert(size, Object::Dictionary(dictionary! { "FT" => "Btn", "Ff" => 1i64 << 15, "T" => Object::string_literal("size"), "TU" => Object::string_literal("Shirt size"), "V" => "Off", "Kids" => kids }));
     let country = d.add_object(dictionary! { "Type" => "Annot", "Subtype" => "Widget", "FT" => "Ch", "Ff" => 1i64 << 17, "T" => Object::string_literal("country"),
         "Opt" => vec![Object::string_literal("AR"), Object::string_literal("ES"), Object::string_literal("MX")], "V" => Object::string_literal("AR"),
         "Rect" => rect(72, 580, 100, 20), "P" => page_id, "DA" => Object::string_literal("/Helv 12 Tf 0 g") });
@@ -89,6 +89,10 @@ fn every_kind_is_listed_where_it_is() {
     assert!(size.iter().all(|s| s.kind == Kind::Radio && s.value == "Off"));
     assert_eq!(by_name(&f, "country")[0].options, ["AR", "ES", "MX"]);
     assert!(by_name(&f, "locked")[0].read_only);
+    // the people-facing label (/TU): trimmed, read from the parent for a radio's widgets, empty when absent
+    assert_eq!(name.label, "Your full name");
+    assert!(size.iter().all(|s| s.label == "Shirt size"), "{size:#?}");
+    assert_eq!(by_name(&f, "country")[0].label, "");
     assert!(!forms::is_signed(&doc));
 }
 

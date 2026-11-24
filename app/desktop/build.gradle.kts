@@ -46,4 +46,6 @@ tasks.test {
     systemProperty("pp.lang", (project.findProperty("lang") as String?) ?: "en")
     // ScreenshotTest writes PNGs only when asked: gradlew :desktop:test -Pshots=<folder>
     systemProperty("pp.shots", (project.findProperty("shots") as String?) ?: "")
+    // ...and at the Play store size: -Pstore=true
+    systemProperty("pp.shots.store", (project.findProperty("store") as String?) ?: "")
 }

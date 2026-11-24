@@ -292,6 +292,8 @@ pub struct FormField {
     pub page: u32,
     /// The key for [fill_form].
     pub name: String,
+    /// What the form calls it for people (its tooltip), or empty.
+    pub label: String,
     pub kind: FieldKind,
     /// Text and choices: the text. Check and radio: the chosen on-state, or "Off".
     pub value: String,
@@ -313,6 +315,7 @@ pub fn form_fields(input: PdfInput) -> Result<Vec<FormField>> {
         .map(|f| FormField {
             page: f.page,
             name: f.name,
+            label: f.label,
             kind: match f.kind {
                 pp_core::forms::Kind::Text => FieldKind::Text,
                 pp_core::forms::Kind::Check => FieldKind::Check,

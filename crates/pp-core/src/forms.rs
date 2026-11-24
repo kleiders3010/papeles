@@ -44,6 +44,8 @@ pub struct Field {
     pub page: u32,
     /// The full field name ("parent.child"), the key for [fill].
     pub name: String,
+    /// What the form calls it for people (/TU, the "tooltip"), or empty: a better label than the name.
+    pub label: String,
     pub kind: Kind,
     /// Text and choices: the text. Check and radio: the chosen on-state name, or "Off".
     pub value: String,
@@ -206,6 +208,7 @@ pub fn fields(doc: &Document) -> Result<Vec<Field>> {
             out.push(Field {
                 page: n,
                 name: full_name(doc, w),
+                label: inherited(doc, w, b"TU").map(text_of).map(|t| t.trim().to_string()).unwrap_or_default(),
                 kind,
                 value,
                 on: if matches!(kind, Kind::Check | Kind::Radio) { on_state(doc, w) } else { String::new() },

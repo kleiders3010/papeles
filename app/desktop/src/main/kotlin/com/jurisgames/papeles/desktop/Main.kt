@@ -88,13 +88,20 @@ class DesktopHost(private val owner: () -> Frame?) : Host {
 /** Where PDFium is: next to the app when packaged, or `-Dpp.pdfium=DIR` (development, tests). */
 fun pdfiumDir(): String = System.getProperty("pp.pdfium") ?: System.getProperty("compose.application.resources.dir") ?: "."
 
-fun main() {
+fun main(args: Array<String>) {
     System.getProperty("compose.application.resources.dir")?.let { res ->
         if (System.getProperty("jna.library.path") == null) System.setProperty("jna.library.path", res)
     }
     // A missing engine shows on first open as a plain message (PpException.NoEngine); page work still runs.
     AppInfo.version = "1.0.0 desktop"
     AppInfo.engine = runCatching { loadEngine(pdfiumDir()) }.fold({ "started" }, { "did not start" })
+    // `Papeles --check`: the packaged app's launch test (scripts/package-desktop.sh): the bridge and PDFium load,
+    // then exit 0, or 1 when they don't; no window opens
+    if ("--check" in args) {
+        val ok = AppInfo.engine == "started" && runCatching { com.jurisgames.papeles.core.textBoxSize("check", 12f) }.isSuccess
+        System.err.println("papeles check: engine ${AppInfo.engine}, bridge ${if (ok) "ok" else "failed"}")
+        kotlin.system.exitProcess(if (ok) 0 else 1)
+    }
     application {
         var frame: Frame? = null
         val host = remember { DesktopHost { frame } }

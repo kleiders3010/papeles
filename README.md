@@ -36,6 +36,7 @@ cargo test                        # the Rust core
 cargo build -p pp-ffi             # the bridge for the desktop app
 cd app && ./gradlew :desktop:run  # the desktop app
 scripts/build-android-libs.sh     # the bridge and PDFium for Android, then ./gradlew :android:assembleDebug
+scripts/package-desktop.sh        # the Windows installer (MSI), after checking the packaged app starts
 ```
 
 ## Problems or ideas

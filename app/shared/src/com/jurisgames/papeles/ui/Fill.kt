@@ -144,10 +144,12 @@ private fun Peek(doc: OpenDoc, host: Host, group: Group, cache: HashMap<UInt, Im
         cache[f.page] = img
     }
     val box = remember(doc, f.page) { runCatching { doc.file.pageSize(f.page) }.getOrNull() } ?: return
-    // every widget of the group, plus room for a label: 180 points to the left, 24 above
-    val x0 = (group.widgets.minOf { it.area.x } - 180f).coerceAtLeast(0f)
+    // every widget of the group, plus room for a label: a text field's is usually to its left, a box's or a round
+    // button's to its right (2026-11-23: "I agree..." next to a checkbox was cut off at its first letter)
+    val tick = group.kind == FieldKind.CHECK || group.kind == FieldKind.RADIO
+    val x0 = (group.widgets.minOf { it.area.x } - if (tick) 24f else 180f).coerceAtLeast(0f)
     val y0 = (group.widgets.minOf { it.area.y } - 24f).coerceAtLeast(0f)
-    val x1 = (group.widgets.maxOf { it.area.x + it.area.w } + 12f).coerceAtMost(box.width)
+    val x1 = (group.widgets.maxOf { it.area.x + it.area.w } + if (tick) 260f else 12f).coerceAtMost(box.width)
     val y1 = (group.widgets.maxOf { it.area.y + it.area.h } + 6f).coerceAtMost(box.height)
     if (x1 <= x0 || y1 <= y0) return
     // the space is kept from the start (known from the page, not the picture), so nothing below moves when the
@@ -164,7 +166,8 @@ private fun Peek(doc: OpenDoc, host: Host, group: Group, cache: HashMap<UInt, Im
 @Composable
 private fun FieldControl(group: Group, value: String, set: (String) -> Unit) {
     val f = group.first
-    val label = group.name.substringAfterLast('.').ifEmpty { group.name }
+    // the form's own words for it (its tooltip) when it has them, else the last part of its name
+    val label = f.label.ifEmpty { group.name.substringAfterLast('.').ifEmpty { group.name } }
     when (f.kind) {
         FieldKind.TEXT -> OutlinedTextField(value, { set(it) }, label = { Text(label) }, singleLine = !f.multiline, enabled = !f.readOnly,
             minLines = if (f.multiline) 3 else 1, modifier = Modifier.fillMaxWidth().testTag("input-${group.name}"))

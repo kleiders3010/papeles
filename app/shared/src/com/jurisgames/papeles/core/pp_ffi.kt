@@ -1758,6 +1758,11 @@ data class FormField (
      */
     var `name`: kotlin.String
     , 
+    /**
+     * What the form calls it for people (its tooltip), or empty.
+     */
+    var `label`: kotlin.String
+    , 
     var `kind`: FieldKind
     , 
     /**
@@ -1797,6 +1802,7 @@ public object FfiConverterTypeFormField: FfiConverterRustBuffer<FormField> {
         return FormField(
             FfiConverterUInt.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterTypeFieldKind.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
@@ -1811,6 +1817,7 @@ public object FfiConverterTypeFormField: FfiConverterRustBuffer<FormField> {
     override fun allocationSize(value: FormField) = (
             FfiConverterUInt.allocationSize(value.`page`) +
             FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`label`) +
             FfiConverterTypeFieldKind.allocationSize(value.`kind`) +
             FfiConverterString.allocationSize(value.`value`) +
             FfiConverterString.allocationSize(value.`on`) +
@@ -1824,6 +1831,7 @@ public object FfiConverterTypeFormField: FfiConverterRustBuffer<FormField> {
     override fun write(value: FormField, buf: ByteBuffer) {
             FfiConverterUInt.write(value.`page`, buf)
             FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`label`, buf)
             FfiConverterTypeFieldKind.write(value.`kind`, buf)
             FfiConverterString.write(value.`value`, buf)
             FfiConverterString.write(value.`on`, buf)
