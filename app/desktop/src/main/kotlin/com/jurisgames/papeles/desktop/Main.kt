@@ -31,7 +31,7 @@ import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.ImageInfo
 
 /** This build's version code: the same number as the Android build's versionCode. */
-const val VERSION_CODE = 1uL
+const val VERSION_CODE = 2uL
 
 /** A file on disk as the app sees it. */
 fun picked(f: File) = Picked(f.name, f.absolutePath) { f.readBytes() }

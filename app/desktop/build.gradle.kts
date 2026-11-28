@@ -21,7 +21,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi)
             packageName = "Papeles"
-            packageVersion = "1.0.0"
+            packageVersion = "1.0.1"
             vendor = "Juris Games"
             description = "PDF tools on your own device, no accounts, free"
             modules("jdk.unsupported")

@@ -12,8 +12,8 @@ android {
         applicationId = "com.jurisgames.papeles"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // pp_ffi and PDFium are built for these only (scripts/build-android-libs.sh).
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }

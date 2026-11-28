@@ -18,3 +18,4 @@ Imprimir y abrir en otra app. Páginas oscuras para leer de noche. Marcar: color
 - The installer offers Papeles in "Open with" for PDFs.
 - Share copies the file (Ctrl+V pastes it into an email, a chat or a folder) and shows it in its folder.
 - A PDF or photos sent from another app while you have unsaved work ask first (Android).
+- A file that can't be saved never removes an older copy you chose to replace (Android; 4a6e079).
